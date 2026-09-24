@@ -333,7 +333,7 @@ $form.Controls.Add($lblStatus)
 $y += 22
 
 # ---- 日志 ----
-$txtLog = New-Object System.Windows.Forms.TextBox
+$script:txtLog = New-Object System.Windows.Forms.TextBox
 $txtLog.Location = [System.Drawing.Point]::new($lx, $y)
 $txtLog.Size = [System.Drawing.Size]::new(472, 120)
 $txtLog.Multiline = $true
@@ -348,8 +348,8 @@ $form.Controls.Add($txtLog)
 
 function Add-Log {
   param([string]$Msg)
-  $txtLog.AppendText("$Msg`r`n")
-  $txtLog.ScrollToCaret()
+  $script:txtLog.AppendText("$Msg`r`n")
+  $script:txtLog.ScrollToCaret()
 }
 
 # 处理器切换
@@ -436,6 +436,10 @@ $cboModel.Add_SelectedIndexChanged({
 # ==================== 开始处理 ====================
 
 $script:isRunning = $false
+$script:currentJob = $null
+$script:guiTimer = New-Object System.Windows.Forms.Timer
+$script:guiTimer.Interval = 800
+$script:guiTimerOutDir = ""
 
 $btnStart.Add_Click({
   if ($script:isRunning) {
@@ -488,7 +492,8 @@ $btnStart.Add_Click({
 
   $filePaths = $files.FullName
 
-  $job = Start-Job -ScriptBlock {
+  $script:guiTimerOutDir = $outDir
+  $script:currentJob = Start-Job -ScriptBlock {
     param($exe, $filePaths, $outDir, $processor, $model, $scale, $w, $h,
           $gpu, $crfVal, $overwriteFlag)
 
@@ -543,53 +548,54 @@ $btnStart.Add_Click({
   } -ArgumentList $script:exePath, $filePaths, $outDir, $processor, $model,
                    $scaleVal, $width, $height, $gpuIdx, $crf, $overwrite
 
-  $timer = New-Object System.Windows.Forms.Timer
-  $timer.Interval = 800
-  $timer.Add_Tick({
-    if ($job.State -eq 'Completed' -or $job.State -eq 'Failed') {
-      $timer.Stop()
-      $results = Receive-Job -Job $job
-      Remove-Job -Job $job -Force
+  $script:guiTimer.Start()
+})
 
-      $ok = 0; $skip = 0; $fail = 0
-      foreach ($r in $results) {
-        if ($r.Skipped) {
-          $skip++
-          Add-Log "[$($r.Index)/$($r.Total)] 跳过：$($r.Name)"
-        } elseif ($r.Success) {
-          $ok++
-          Add-Log "[$($r.Index)/$($r.Total)] 完成：$($r.Name)（$($r.SizeMB) MB）"
-        } else {
-          $fail++
-          Add-Log "[$($r.Index)/$($r.Total)] 失败：$($r.Name) - $($r.Error)"
-        }
+# ---------- Timer 事件（只注册一次） ----------
+$script:guiTimer.Add_Tick({
+  if (-not $script:currentJob) { return }
+  if ($script:currentJob.State -eq 'Completed' -or $script:currentJob.State -eq 'Failed') {
+    $script:guiTimer.Stop()
+    $results = Receive-Job -Job $script:currentJob
+    Remove-Job -Job $script:currentJob -Force
+    $script:currentJob = $null
+
+    $ok = 0; $skip = 0; $fail = 0
+    foreach ($r in $results) {
+      if ($r.Skipped) {
+        $skip++
+        Add-Log "[$($r.Index)/$($r.Total)] 跳过：$($r.Name)"
+      } elseif ($r.Success) {
+        $ok++
+        Add-Log "[$($r.Index)/$($r.Total)] 完成：$($r.Name)（$($r.SizeMB) MB）"
+      } else {
+        $fail++
+        Add-Log "[$($r.Index)/$($r.Total)] 失败：$($r.Name) - $($r.Error)"
       }
-
-      $progBar.Value = 100
-      $lblStatus.Text = "完成：成功 $ok / 跳过 $skip / 失败 $fail"
-      Add-Log "---"
-      Add-Log "全部结束：成功 $ok / 跳过 $skip / 失败 $fail"
-      Add-Log "输出目录：$outDir"
-
-      $script:isRunning = $false
-      $btnStart.Text = "▶  开始放大"
-      $btnStart.Enabled = $true
-
-      if ($fail -eq 0 -and ($ok + $skip) -gt 0) {
-        $res = [System.Windows.Forms.MessageBox]::Show(
-          "处理完成！成功 $ok，跳过 $skip`n是否打开输出目录？",
-          "完成", "YesNo", "Question")
-        if ($res -eq "Yes") { explorer $outDir }
-      }
-    } else {
-      # 渐进式进度
-      if ($progBar.Value -lt 90) {
-        $progBar.Value = $progBar.Value + 1
-      }
-      $lblStatus.Text = "处理中...（请稍候）"
     }
-  })
-  $timer.Start()
+
+    $progBar.Value = 100
+    $lblStatus.Text = "完成：成功 $ok / 跳过 $skip / 失败 $fail"
+    Add-Log "---"
+    Add-Log "全部结束：成功 $ok / 跳过 $skip / 失败 $fail"
+    Add-Log "输出目录：$script:guiTimerOutDir"
+
+    $script:isRunning = $false
+    $btnStart.Text = "▶  开始放大"
+    $btnStart.Enabled = $true
+
+    if ($fail -eq 0 -and ($ok + $skip) -gt 0) {
+      $res = [System.Windows.Forms.MessageBox]::Show(
+        "处理完成！成功 $ok，跳过 $skip`n是否打开输出目录？",
+        "完成", "YesNo", "Question")
+      if ($res -eq "Yes") { explorer $script:guiTimerOutDir }
+    }
+  } else {
+    if ($progBar.Value -lt 90) {
+      $progBar.Value = $progBar.Value + 1
+    }
+    $lblStatus.Text = "处理中...（请稍候）"
+  }
 })
 
 # 关闭确认
