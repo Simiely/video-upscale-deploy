@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-24（commit `d0a106a`）v1.4.0 FlashVSR 本机部署验证通过
+> 📌 **文档基线**：2026-09-24 v1.5.0 SeedVR2 本机部署验证通过（三套方案均已实跑）
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
@@ -36,6 +36,10 @@
 - **12G 卡跑 FlashVSR 必须开分块**：`tiled_dit` / `tiled_vae` 关掉任意一个都会 OOM（实测节点申请 19.02 GiB，而 12G 卡上限 11.99 GiB）。这两个开关只对 24G 卡有意义。
 - **FlashVSR 权重目录布局是写死的**：节点 `nodes.py` 用 `model_path = models_dir / model`，所以必须落在 `models\FlashVSR-v1.1`，不能套一层 `models\FlashVSR\FlashVSR-v1.1`。
 - **hf-mirror 拉大文件要关 xet**：设 `HF_HUB_DISABLE_XET=1` 并降为单线程续传，否则 5 GB 级文件会反复中断，还会留下巨型 `.incomplete` 残留。
+- **SeedVR2 的 ffmpeg 必须「既完整、又在 PATH 上」**：`inference_cli.py` 里写死了裸命令——校验用 `shutil.which("ffmpeg")`，编码用 `subprocess.Popen(['ffmpeg', ...])`，**只认 PATH**。所以光探测出完整版路径没用，必须把它的目录插到子进程 PATH 最前（`common.ps1` 的 `Enable-FfmpegOnPath`，批量脚本启动时已自动调用）。PATH 上很容易踩到精简构建（如 TRAE 自带的 `--disable-everything` 版本，无 rawvideo、无 libx265），表现为 `Unknown input format: 'rawvideo'` 直接崩。
+- **别用 `Test-Cmd 'ffmpeg'` 判断 ffmpeg 可用**：精简构建也在 PATH 上，会被误判为可用。统一用 `Resolve-FfmpegTool`（按 `-demuxers` 找 rawvideo、按 `-encoders` 找 libx265 做能力探测）。
+- **SeedVR2 的 CLI 完全不处理音频**：`inference_cli.py` 的 `add_argument` 全表里没有任何音频项，输出天然无音轨。单文件与目录两种模式都由 `批量放大.ps1` 收尾时调 `Restore-AudioTrack` 用 ffmpeg 流拷贝接回（`-c:v copy -c:a copy`）。
+- **校验输出要看编码，不能只看「跑完了」**：SeedVR2 在 ffmpeg 后端不可用时会**静默退回 opencv**，写成 MPEG-4 Part 2（`codec_name=mpeg4`，同画质体积大得多）。用 ffprobe 核对 `codec_name` 应为 `h264`、帧数与源一致、有 `aac` 音轨。
 
 ## 约定
 
@@ -65,6 +69,13 @@ powershell -File .\00-ComfyUI底座\启动ComfyUI.ps1
 
 # 查 SeedVR2 CLI 支持哪些参数（改批量脚本前先跑这个）
 & C:\AI\ComfyUI\.venv\Scripts\python.exe C:\AI\ComfyUI\custom_nodes\seedvr2_videoupscaler\inference_cli.py --help
+
+# 验 ffmpeg 够不够用（rawvideo 必须有；libx265 决定 -TenBit 能否用）
+ffmpeg -hide_banner -demuxers  | Select-String rawvideo
+ffmpeg -hide_banner -encoders | Select-String libx265
+
+# 验收放大产物：编码应为 h264（mpeg4 = 踩了精简 ffmpeg）、帧数与源一致、有 aac 音轨
+ffprobe -v error -show_entries stream=codec_name,width,height,nb_frames -of default=noprint_wrappers=1 "输出.mp4"
 ```
 
 ## 详细规则（按需 @引用）

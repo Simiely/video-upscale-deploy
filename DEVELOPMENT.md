@@ -44,7 +44,9 @@ common.ps1              # 唯一的配置源 + 工具函数库（不含业务逻
 | `Show-Gpu` / `Test-Cmd` / `Get-BasePython` | 环境探测（显卡、外部命令、Python 解释器） |
 | `Assert-ComfyReady` | 前置断言：底座没装就报错并给出补救命令 |
 | `Install-ComfyNode` | 克隆自定义节点 + 装其 `requirements.txt`（已存在则只补依赖） |
-| `Invoke-HfDownload` | 走镜像的 `snapshot_download`，支持断点续传与文件通配 |
+| `Invoke-HfDownload` | 走镜像拉权重，**基于 curl.exe**（不用 `huggingface_hub`），支持断点续传、按远端字节数校验完整性 |
+| `Resolve-FfmpegTool` / `Enable-FfmpegOnPath` | 按能力探测可用的完整版 ffmpeg，并把它注入子进程 PATH |
+| `Restore-AudioTrack` / `Test-HasAudio` | 用 ffmpeg 流拷贝把源音轨接回放大后的输出（SeedVR2 专用） |
 | `Assert-ModelFiles` | 校验关键权重文件是否齐全，缺哪个列哪个 |
 | `Test-ComfyApi` / `Wait-ComfyApi` / `Invoke-ComfyPrompt` | 方案二的批量通道：把 API 格式工作流提交给 ComfyUI 并等结果 |
 
@@ -180,6 +182,33 @@ common.ps1              # 唯一的配置源 + 工具函数库（不含业务逻
 - 根因：建议文案是手写的，没有单一事实源
 - 解决：统一为 `-Profile 16g`（3B FP16 + BlockSwap 16）；24G 同步为 `-Profile 24g`
 - 预防：**凡是有"档位/默认值"的地方，都从同一张表派生**；改一处必须 grep 全仓库同名概念
+
+### 问题：SeedVR2 的 ffmpeg 编码后端崩在精简构建上
+
+**TL;DR**：`inference_cli.py` 里写死了裸命令 `ffmpeg`（`shutil.which` 校验 + `subprocess.Popen(['ffmpeg', ...])` 编码），**只认 PATH**。PATH 上第一个往往是精简构建（`--disable-everything`，无 rawvideo、无 libx265），一跑就 `Unknown input format: 'rawvideo'` 崩溃；若换 opencv 后端则写成 MPEG-4 Part 2。
+
+- 问题：批量脚本已探测出完整版 ffmpeg 路径，但 CLI 依然崩——因为"探测到"和"子进程能用上"是两件事
+- 根因：CLI 不读任何"ffmpeg 路径"参数，只用 PATH 查找；本机实测 PATH 首个是 TRAE 自带的精简构建
+- 解决：`Enable-FfmpegOnPath` 把完整版所在目录插到当前进程 PATH 最前面（只影响本进程及子进程），批量脚本启动时调用
+- 预防：**涉及外部命令的探测，必须确认"子进程也拿得到"**。另外判断 ffmpeg 可用性不能只看 PATH 上有没有，要按能力探测（`-demuxers` 找 rawvideo、`-encoders` 找 libx265）
+
+### 问题：SeedVR2 输出没有音轨
+
+**TL;DR**：SeedVR2 的 CLI **完全不处理音频**，`add_argument` 全表里没有任何音频项，输出天然只有视频流。手册一度写成"CLI 会自动保留"，是错的。
+
+- 问题：720p 带 AAC 的素材放大后音轨整条丢失
+- 根因：该 CLI 定位是"视频画面修复"，音频不在其职责内，也不提供任何透传开关
+- 解决：`Restore-AudioTrack` 在收尾时用 ffmpeg 把源音轨流拷贝过去（`-map 0:v:0 -map 1:a:0 -c:v copy -c:a copy`），单文件与目录两种模式都覆盖
+- 预防：**别假设"放大工具会保留音轨"**，跑完用 ffprobe 核对输出流里有没有音频轨
+
+### 问题：只看"跑完了"会漏掉静默降级
+
+**TL;DR**：SeedVR2 的 ffmpeg 后端不可用时会**静默退回 opencv**，输出是 MPEG-4 Part 2（`codec_name=mpeg4`），体积比 H.264 大得多，但脚本退出码是 0、日志也报"completed successfully"。
+
+- 问题：一次"跑通"的输出，事后 ffprobe 才发现是 `mpeg4` 而非 `h264`，说明 ffmpeg 后端从未真正生效
+- 根因：`save_frames_to_video` 在 `video_backend == "ffmpeg"` 分支之外直接走 `cv2.VideoWriter_fourcc(*'mp4v')`，没有失败回退提示
+- 解决：批量脚本改为启动时就把可用 ffmpeg 注入 PATH（根治），并在文档里给出 ffprobe 自检三要素
+- 预防：**验收要看产物属性（编码 / 分辨率 / 帧数 / 音轨），不能只看退出码**；静默降级是最难发现的一类问题
 
 ---
 

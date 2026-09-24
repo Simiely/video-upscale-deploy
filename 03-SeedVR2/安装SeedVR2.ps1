@@ -39,9 +39,17 @@ Assert-ComfyReady
 Write-Done "ComfyUI 虚拟环境已就绪：$COMFY_PY"
 New-ProjectDirs
 
-if (-not (Test-Cmd 'ffmpeg')) {
-  Write-Note '没找到 ffmpeg。不影响出片，但用不了 --video_backend ffmpeg 的 10bit 输出（渐变不易出现色带）。'
-  Write-Detail '需要的话：winget install Gyan.FFmpeg，装完重开终端。'
+# 注意：这里要的是「完整版」ffmpeg（能读 rawvideo），不能只看 PATH 上有没有 ffmpeg——
+# 精简构建（如 TRAE 自带的 --disable-everything 版本）会被 Test-Cmd 误判为可用。
+$ffOk = Resolve-FfmpegTool
+$ffX265 = Resolve-FfmpegTool -NeedX265
+if (-not $ffOk) {
+  Write-Note '没找到可用的 ffmpeg（需要支持 rawvideo 的完整版）。不影响出片，但 --video_backend ffmpeg 用不了。'
+  Write-Detail '装一个完整版：winget install Gyan.FFmpeg（装完重开终端），或设 FFMPEG_PATH 环境变量。'
+} elseif (-not $ffX265) {
+  Write-Detail "ffmpeg 就绪：$ffOk（不带 libx265，-TenBit 10bit 输出不可用，普通 H.264 不受影响）"
+} else {
+  Write-Detail "ffmpeg 就绪（含 libx265，支持 -TenBit）：$ffX265"
 }
 
 # ---------- 2. 安装节点 ----------
@@ -120,5 +128,5 @@ Write-Done "SeedVR2 CLI 可用"
 
 Write-Host ""
 Write-Host "安装完成。接下来：" -ForegroundColor Green
-Write-Host "  1) 命令行批量放大：powershell -File `"$PSScriptRoot\批量放大.ps1`" -Input `"$INPUT_DIR`" -Profile $Profile" -ForegroundColor Gray
+Write-Host "  1) 命令行批量放大：powershell -File `"$PSScriptRoot\批量放大.ps1`" -InputPath `"$INPUT_DIR`" -Profile $Profile" -ForegroundColor Gray
 Write-Host "  2) 网页界面里用：powershell -File `"$PSScriptRoot\..\00-ComfyUI底座\启动ComfyUI.ps1`"" -ForegroundColor Gray

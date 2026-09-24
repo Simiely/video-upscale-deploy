@@ -4,16 +4,16 @@
         逐帧处理、显存占用很低、速度最快，适合批量出片。
   示例：
     # 最快：Real-CUGAN 2 倍，真人/通用素材
-    .\批量放大.ps1 -Input "E:\VideoUpscale\input" -Scale 2
+    .\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Scale 2
 
     # 细节更多：Real-ESRGAN 4 倍（realesrgan-plus / realesrgan-plus-anime 都只有 4 倍权重）
-    .\批量放大.ps1 -Input "a.mp4" -Processor realesrgan -Scale 4 -Model realesrgan-plus
+    .\批量放大.ps1 -InputPath "a.mp4" -Processor realesrgan -Scale 4 -Model realesrgan-plus
 
     # 番剧：Anime4K 着色器，几乎不耗时
-    .\批量放大.ps1 -Input "E:\VideoUpscale\input" -Processor libplacebo -Width 3840 -Height 2160
+    .\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Processor libplacebo -Width 3840 -Height 2160
 
     # 补帧：24fps -> 60fps
-    .\批量放大.ps1 -Input "a.mp4" -Processor rife -FrameMul 3
+    .\批量放大.ps1 -InputPath "a.mp4" -Processor rife -FrameMul 3
 #>
 
 param(

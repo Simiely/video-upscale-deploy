@@ -46,10 +46,25 @@ if ($py) {
   Write-Note '缺 Python 3.12/3.13：装法：winget install Python.Python.3.12'
 }
 
-if (Test-Cmd 'ffmpeg') {
-  Write-Done "ffmpeg：$((& ffmpeg -version | Select-Object -First 1) -replace '\s+', ' ')"
+# ffmpeg 不能只看「PATH 上有没有」：精简构建（--disable-everything）也在 PATH 上，
+# 但它连 rawvideo 输入格式都没有，SeedVR2 走 ffmpeg 后端会直接崩。
+# 所以这里按能力探测，并区分「能用 / 只能基础用 / 没有」三档。
+$ffFull = Resolve-FfmpegTool
+$ffX265 = Resolve-FfmpegTool -NeedX265
+if ($ffFull) {
+  Write-Done "ffmpeg（完整版）：$ffFull"
+  if ($ffX265) {
+    Write-Detail '含 libx265，方案三的 -TenBit 10bit 输出可用'
+  } else {
+    Write-Detail '不含 libx265，-TenBit 不可用（普通 H.264 输出不受影响）'
+  }
+  $onPath = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
+  if ($onPath -and ($onPath -ne $ffFull)) {
+    Write-Note "PATH 上的 ffmpeg 不是完整版，脚本会自动改用上面这个：$onPath"
+  }
 } else {
-  Write-Note '缺 ffmpeg：不装也能出片，但方案三用不了 10bit 输出、方案一少一层封装能力。装法：winget install Gyan.FFmpeg'
+  Write-Note '缺可用的完整版 ffmpeg：方案三的 ffmpeg 编码后端用不了（会退回 opencv 的 MPEG-4 Part 2，体积大得多）。'
+  Write-Detail '装法：winget install Gyan.FFmpeg（装完重开终端），或设 FFMPEG_PATH 环境变量。'
 }
 
 # ---------- 3. 磁盘 ----------

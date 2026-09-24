@@ -100,7 +100,7 @@ try {
 
 Write-Host ""
 Write-Host "安装完成。接下来：" -ForegroundColor Green
-Write-Host "  1) 批量放大：powershell -File `"$PSScriptRoot\批量放大.ps1`" -Input `"$INPUT_DIR`" -Scale 4" -ForegroundColor Gray
+Write-Host "  1) 批量放大：powershell -File `"$PSScriptRoot\批量放大.ps1`" -InputPath `"$INPUT_DIR`" -Scale 4" -ForegroundColor Gray
 Write-Host "     （脚本会自己拉起 ComfyUI，也可以先加 -AutoStart）" -ForegroundColor DarkGray
 Write-Host "  2) 网页界面：powershell -File `"$PSScriptRoot\..\00-ComfyUI底座\启动ComfyUI.ps1`"" -ForegroundColor Gray
 Write-Host "     界面里按 ..\docs\使用指南.md 第五节的连线表拖 4 个节点即可" -ForegroundColor DarkGray

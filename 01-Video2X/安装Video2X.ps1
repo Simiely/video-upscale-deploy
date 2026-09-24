@@ -59,4 +59,4 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "安装完成。放大视频：" -ForegroundColor Green
-Write-Host "  powershell -File `"$PSScriptRoot\批量放大.ps1`" -Input `"$INPUT_DIR`" -Scale 2" -ForegroundColor Gray
+Write-Host "  powershell -File `"$PSScriptRoot\批量放大.ps1`" -InputPath `"$INPUT_DIR`" -Scale 2" -ForegroundColor Gray

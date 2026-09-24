@@ -58,13 +58,13 @@ powershell -ExecutionPolicy Bypass -File .\03-SeedVR2\安装SeedVR2.ps1 -Profile
 
 ```powershell
 # 方案一：通用/真人素材 2 倍，最快
-powershell -File .\01-Video2X\批量放大.ps1 -Input "E:\VideoUpscale\input" -Scale 2
+powershell -File .\01-Video2X\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Scale 2
 
 # 方案二：4090 上 4 倍
-powershell -File .\02-FlashVSR\批量放大.ps1 -Input "E:\VideoUpscale\input" -Scale 4
+powershell -File .\02-FlashVSR\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Scale 4
 
-# 方案三：按档位批量（脚本会自己拉起 ComfyUI 或直接调 CLI）
-powershell -File .\03-SeedVR2\批量放大.ps1 -Input "E:\VideoUpscale\input" -Profile 12g
+# 方案三：按档位批量（直接用节点自带 CLI，不用先开 ComfyUI）
+powershell -File .\03-SeedVR2\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Profile 12g
 ```
 
 **路径约定**：只改 `common.ps1` 顶部两个变量，所有脚本自动跟着走，不用逐个改。

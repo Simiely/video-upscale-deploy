@@ -4,6 +4,70 @@
 
 ---
 
+## v1.5.0 · 2026-09-24
+
+方案三 SeedVR2 本机部署跑通（RTX 4070 SUPER 12G）。这一版修的问题全部是**只有真跑一遍才会暴露**的——
+前两轮是读源码核对，这次是端到端实跑，暴露了 5 处错误，其中 2 处是硬 bug。
+
+### 修复
+
+- **硬 bug：`Test-FfmpegX265` 函数不存在**。`03-SeedVR2/批量放大.ps1` 调用了它，但 `common.ps1`
+  里从未定义，一加 `-TenBit` 就报「无法将"Test-FfmpegX265"项识别为 cmdlet」。已改为
+  `Resolve-FfmpegTool -NeedX265`。
+- **硬 bug：探测出完整版 ffmpeg 路径并不能让 CLI 用上它**。`inference_cli.py` 里写死了裸命令
+  （校验用 `shutil.which("ffmpeg")`、编码用 `subprocess.Popen(['ffmpeg', ...])`），只认 PATH。
+  新增 `Enable-FfmpegOnPath`，把完整版目录插到当前进程 PATH 最前面，子进程才会拿到对的那个。
+  本机 PATH 第一个是 TRAE 自带的 `--disable-everything` 精简版（无 rawvideo、无 libx265），
+  不改 PATH 必崩（`Unknown input format: 'rawvideo'`）。
+- **音轨丢失**：SeedVR2 的 CLI 完全不处理音频（`add_argument` 全表里没有任何音频项），
+  输出天然无音轨。新增 `Restore-AudioTrack`（ffmpeg `-c:v copy -c:a copy` 流拷贝），
+  单文件模式与目录模式都会在收尾时回接源音轨。
+- `安装SeedVR2.ps1` / `检查环境.ps1`：ffmpeg 判断从 `Test-Cmd 'ffmpeg'`（会被精简版误判为可用）
+  改为 `Resolve-FfmpegTool` 按能力探测，并区分「完整版 / 无 libx265 / 没有」三档提示。
+- **目录模式产物命名不一致 + 重复计算**：SeedVR2 目录模式沿用输入文件名（无后缀），与方案一（`_2x`）、
+  方案二（`_4x_flashvsr`）不一致；若「输入目录 == 输出目录」还会直接覆盖源文件。
+  已统一改为 `<原名>_<分辨率>p_seedvr2.mp4`，并加 `-Overwrite` 保护。
+  另外把「输出是否已存在」的检查**提前到开跑前**——原来放在 CLI 跑完之后，等于每次都白算一遍
+  （实测：已有产物时从 3 分 36 秒降到 1.7 秒秒退）。
+- **README 与两处安装脚本的提示行残留 `-Input`**：v1.4.0 只改了脚本参数名，漏改这些文案，
+  照抄会报「找不到参数 `-Input`」。全部改为 `-InputPath`。
+- 文档常见问题第 4 条原写「SeedVR2 的 CLI 会自动保留音轨」——**完全错误**，已更正。
+
+### 新增
+
+- `common.ps1`：`Enable-FfmpegOnPath`（把可用 ffmpeg 注入子进程 PATH）
+- `common.ps1`：`Get-FFmpegExe` / `Get-FfprobeExe` / `Test-HasAudio` / `Restore-AudioTrack`
+- 使用指南新增「RTX 4070 SUPER 12G 实测」小节：分阶段耗时表 + 换算 + 提速建议
+- 使用指南常见问题新增第 8 条（ffmpeg 精简构建的识别与处置）、第 9 条（用 ffprobe 自检输出）
+
+### 实测数据（4070 SUPER 12G，`-Profile 12g` = 3B FP8 + BlockSwap 24 + VAE 分块）
+
+源：1280×720 / 48 帧 / 2.0 秒 / h264 + AAC
+
+| 阶段 | 耗时 | 说明 |
+|---|---|---|
+| VAE 编码（10 批 × 5 帧） | 约 31 s | 3.1 s/批 |
+| DiT 扩散（10 批） | 约 40 s | 3.9 s/批，BlockSwap 24/32 |
+| VAE 解码（10 批） | 约 130 s | 13 s/批，**全链路最慢** |
+| 后处理 + 封装 | 约 8 s | LAB 色彩迁移 |
+| **合计** | **209 s** | **约 4.4 s/帧**；脚本端到端 3 分 36 秒 |
+
+- 启动显存余量 10.81 GB / 11.99 GB，全程无 OOM
+- 输出校验（单文件模式与目录模式**两条分支**均验证）：
+  `h264 High` / 1920×1080 / 48 帧（与源一致）/ AAC 94 帧（与源一致）/ 4.75 MB
+- 换算：24fps 素材约 **17.6 小时/10 分钟片**，印证对比表"数小时级"的定位
+
+### 技术说明
+
+- **解码比扩散慢三倍多**，与"扩散模型慢在扩散"的直觉相反：VAE 分块 + 逐批 CPU 往返是主因。
+  12G 上这是必要代价——关掉 `-TiledVae` 实测直接 OOM。
+- 修复前那次"跑通"的输出其实是 `codec_name=mpeg4`（MPEG-4 Part 2），说明走的是 opencv 回退
+  路径，ffmpeg 后端从未真正生效。**这也是为什么必须用 ffprobe 校验编码，而不是只看"跑完了"**。
+- 清理了 1010 MB 下载残留：早期 `huggingface_hub` 失败留下的 `.cache\huggingface\download\*.incomplete`
+  在改用 curl 后已无用途。
+
+---
+
 ## v1.4.0 · 2026-09-24
 
 方案二 FlashVSR 本机部署跑通（RTX 4070 SUPER 12G），并修复脚本与文档中的参数名不一致问题。
