@@ -4,6 +4,31 @@
 
 ---
 
+## v1.1.0 · 2026-09-24
+
+方案一 Video2X 本机部署验证通过（RTX 4070 SUPER），修复部署中发现的问题，并补充实测性能数据。
+
+### 修复
+
+- `01-Video2X/安装Video2X.ps1`：GitHub API 调用加 token 认证，避免匿名限流导致安装失败
+- `01-Video2X/批量放大.ps1`：参数名 `-Input` 改为 `-InputPath`（`$Input` 是 PowerShell 自动变量，会导致绑定失败）
+- `01-Video2X/批量放大.ps1`：成功判断从「退出码 0」改为「输出文件存在且 > 0」——Video2X 6.4.0 Windows 版 Vulkan 清理阶段偶发非 0 退出，但文件实际正常
+
+### 新增
+
+- `docs/使用指南.md`：补充 RTX 4070 SUPER 实测性能表（Real-CUGAN / Real-ESRGAN / Anime4K / RIFE 四项速度与耗时估算）
+
+### 验证结果（RTX 4070 SUPER 12G）
+
+- Video2X 6.4.0 安装正常，Vulkan 正确识别 RTX 4070 SUPER
+- Real-CUGAN 2x：~33 FPS（360p → 720p）
+- Real-ESRGAN 4x：~27 FPS（360p → 1440p）
+- Anime4K 2x：~100 FPS（360p → 720p）
+- RIFE 2x 补帧：~298 FPS（30fps → 60fps）
+- 批量脚本：跳过已完成、参数前置校验、目录批量处理全部正常
+
+---
+
 ## v1.0.0 · 2026-09-24
 
 首个可用版本。三套方案（Video2X / FlashVSR / SeedVR2）的安装与批量放大脚本全部落地，并逐条对照官方源码核对完毕。

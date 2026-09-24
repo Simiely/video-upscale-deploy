@@ -17,7 +17,7 @@
 #>
 
 param(
-  [Parameter(Mandatory = $true)][string]$Input,
+  [Parameter(Mandatory = $true)][string]$InputPath,
   [ValidateSet('realcugan', 'realesrgan', 'libplacebo', 'rife')][string]$Processor = 'realcugan',
   [int]$Scale = 2,
   [string]$Model = '',
@@ -98,8 +98,8 @@ switch ($Processor) {
   }
 }
 
-$files = Get-VideoFiles -Path $Input
-if ($files.Count -eq 0) { throw "输入路径下没有找到视频文件：$Input" }
+$files = Get-VideoFiles -Path $InputPath
+if ($files.Count -eq 0) { throw "输入路径下没有找到视频文件：$InputPath" }
 
 # ---------- 逐个处理 ----------
 $ok = 0; $fail = 0; $skip = 0
@@ -134,9 +134,13 @@ foreach ($f in $files) {
   $code = $LASTEXITCODE
   $sw.Stop()
 
-  if ($code -eq 0 -and (Test-Path $outFile)) {
+  # Video2X 6.4.0 Windows 版有时处理成功但退出码非 0（Vulkan 清理阶段的访问冲突），
+  # 所以以「输出文件存在 + 大小 > 0」为准，退出码只作为辅助参考。
+  $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -gt 0)
+  if ($fileOk) {
     $mb = [math]::Round((Get-Item $outFile).Length / 1MB, 1)
     Write-Done ("完成，用时 {0:mm\:ss}，输出 {1} MB" -f $sw.Elapsed, $mb)
+    if ($code -ne 0) { Write-Detail "（退出码 $code，文件正常，忽略）" }
     $ok++
   } else {
     Write-Note "失败（退出码 $code）"

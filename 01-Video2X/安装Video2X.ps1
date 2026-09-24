@@ -17,8 +17,11 @@ Write-Done "输出目录：$OUTPUT_DIR"
 
 # ---------- 2. 查询最新版本 ----------
 Write-Step 2 4 "查询 GitHub 最新发行版"
+$ghHeaders = @{ 'User-Agent' = 'video-upscale-deploy' }
+# 有 GITHUB_TOKEN 环境变量就带上，避免匿名 API 限流（60次/小时）
+if ($env:GITHUB_TOKEN) { $ghHeaders['Authorization'] = "token $env:GITHUB_TOKEN" }
 $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/k4yt3x/video2x/releases/latest' `
-                             -Headers @{ 'User-Agent' = 'video-upscale-deploy' }
+                             -Headers $ghHeaders
 $tag = $release.tag_name
 $asset = $release.assets | Where-Object { $_.name -like 'video2x-windows-amd64*.zip' } | Select-Object -First 1
 if (-not $asset) { throw "在 $tag 里没找到 Windows 压缩包，请手动到 https://github.com/k4yt3x/video2x/releases 下载" }
