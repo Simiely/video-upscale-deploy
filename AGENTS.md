@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-24（commit `3a80057`）v1.1.0 Video2X 本机部署验证通过
+> 📌 **文档基线**：2026-09-24（commit `d0a106a`）v1.4.0 FlashVSR 本机部署验证通过
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
