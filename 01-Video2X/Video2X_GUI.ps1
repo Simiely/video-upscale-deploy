@@ -49,11 +49,11 @@ $fontMono = [System.Drawing.Font]::new("Consolas", 8)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Video2X 图形界面"
-$form.Size = [System.Drawing.Size]::new(520, 600)
+$form.Size = [System.Drawing.Size]::new(540, 680)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
-$form.BackColor = "#f5f5f5"
+$form.BackColor = "#1e1e1e"
 
 $y = 16
 $rowH = 30
@@ -229,7 +229,7 @@ $lblCrfHint.Text = "（高质量）"
 $lblCrfHint.Location = [System.Drawing.Point]::new($cx + 310, $y + 3)
 $lblCrfHint.Size = [System.Drawing.Size]::new(60, 20)
 $lblCrfHint.Font = $fontNormal
-$lblCrfHint.ForeColor = "Gray"
+$lblCrfHint.ForeColor = "#888888"
 $form.Controls.Add($lblCrfHint)
 
 $trkCrf.Add_ValueChanged({
@@ -305,9 +305,9 @@ $btnStart.Text = "▶  开始放大"
 $btnStart.Location = [System.Drawing.Point]::new($lx, $y)
 $btnStart.Size = [System.Drawing.Size]::new(472, 42)
 $btnStart.Font = $fontTitle
-$btnStart.BackColor = "#4CAF50"
+$btnStart.BackColor = "#0e639c"
 $btnStart.ForeColor = "White"
-$btnStart.FlatStyle = "Flat"
+$btnStart.FlatStyle = "Flat"; $btnStart.FlatAppearance.BorderSize = 0
 $form.Controls.Add($btnStart)
 
 $y += 52
@@ -327,7 +327,7 @@ $lblStatus.Text = "就绪"
 $lblStatus.Location = [System.Drawing.Point]::new($lx, $y)
 $lblStatus.Size = [System.Drawing.Size]::new(472, 20)
 $lblStatus.Font = $fontNormal
-$lblStatus.ForeColor = "Gray"
+$lblStatus.ForeColor = "#888888"
 $form.Controls.Add($lblStatus)
 
 $y += 22
@@ -343,6 +343,50 @@ $txtLog.Font = $fontMono
 $txtLog.BackColor = "#1e1e1e"
 $txtLog.ForeColor = "#d4d4d4"
 $form.Controls.Add($txtLog)
+
+# ==================== 深色主题 ====================
+
+$darkBg = "#1e1e1e"
+$darkPanel = "#252526"
+$darkInput = "#2d2d30"
+$darkBorder = "#3e3e42"
+$darkText = "#d4d4d4"
+$darkTextDim = "#888888"
+$accent = "#0e639c"
+
+foreach ($ctrl in $form.Controls) {
+  if ($ctrl -is [System.Windows.Forms.Label]) {
+    $ctrl.ForeColor = $darkText
+    $ctrl.BackColor = $darkBg
+  }
+  if ($ctrl -is [System.Windows.Forms.TextBox] -and $ctrl -ne $script:txtLog) {
+    $ctrl.BackColor = $darkInput
+    $ctrl.ForeColor = $darkText
+    $ctrl.BorderStyle = "FixedSingle"
+  }
+  if ($ctrl -is [System.Windows.Forms.ComboBox]) {
+    $ctrl.BackColor = $darkInput
+    $ctrl.ForeColor = $darkText
+    $ctrl.FlatStyle = "Flat"
+  }
+  if ($ctrl -is [System.Windows.Forms.Button] -and $ctrl -ne $btnStart) {
+    $ctrl.BackColor = $darkInput
+    $ctrl.ForeColor = $darkText
+    $ctrl.FlatStyle = "Flat"
+    $ctrl.FlatAppearance.BorderColor = $darkBorder
+    $ctrl.FlatAppearance.BorderSize = 1
+  }
+  if ($ctrl -is [System.Windows.Forms.CheckBox]) {
+    $ctrl.ForeColor = $darkText
+    $ctrl.BackColor = $darkBg
+  }
+  if ($ctrl -is [System.Windows.Forms.ProgressBar]) {
+    # ProgressBar 颜色不好改，保持默认
+  }
+}
+
+$lblCrfHint.ForeColor = $darkTextDim
+$lblStatus.ForeColor = $darkTextDim
 
 # ==================== 交互逻辑 ====================
 
@@ -456,7 +500,7 @@ function Build-ArgList {
   param([string]$InFile, [string]$OutFile)
   $p = $script:procArgs
   $a = @('-i', "`"$InFile`"", '-o', "`"$OutFile`"", '-p', $p.Processor,
-        '-c', 'libx264', '-e', 'crf=' + $p.Crf, '-e', 'preset=slow',
+        '-c', 'libx264', '-e', "crf=$($p.Crf)", '-e', 'preset=slow',
         '-d', $p.Gpu, '--no-progress')
   switch ($p.Processor) {
     'realesrgan' { $a += @('-s', $p.Scale, '--realesrgan-model', $p.Model) }
@@ -527,21 +571,23 @@ function Start-NextFile {
 
   # 启动 video2x 进程
   $argList = Build-ArgList -InFile $f -OutFile $outFile
+  Add-Log "  命令：video2x $argList"
+
+  # 输出重定向到临时日志文件（避免跨线程 UI 操作问题）
+  $logFile = Join-Path $env:TEMP "video2x_gui_$([guid]::NewGuid().ToString('N')).log"
+  $script:procLogFile = $logFile
+  $script:procLogReadPos = 0
+
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName = $script:exePath
-  $psi.Arguments = $argList
+  $psi.FileName = "cmd.exe"
+  $psi.Arguments = "/c `"`"$($script:exePath)`" $argList > `"$logFile`" 2>&1`""
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
 
   $proc = [System.Diagnostics.Process]::new()
   $proc.StartInfo = $psi
-  $proc.EnableRaisingEvents = $true
   $script:procProcess = $proc
   $proc.Start() | Out-Null
-  $proc.BeginOutputReadLine()
-  $proc.BeginErrorReadLine()
 }
 
 $btnStart.Add_Click({
@@ -619,7 +665,22 @@ $script:guiTimer.Add_Tick({
   if (-not $script:isRunning) { return }
   $proc = $script:procProcess
   if ($proc -and -not $proc.HasExited) {
-    # 还在跑，渐进式进度
+    # 还在跑，读日志文件的新增内容
+    if ($script:procLogFile -and (Test-Path $script:procLogFile)) {
+      try {
+        $all = [IO.File]::ReadAllText($script:procLogFile)
+        if ($all.Length -gt $script:procLogReadPos) {
+          $newText = $all.Substring($script:procLogReadPos)
+          $lines = $newText -split "`n" | Where-Object { $_.Trim().Length -gt 0 }
+          foreach ($line in $lines) {
+            $script:txtLog.AppendText("  $($line.Trim())`r`n")
+          }
+          $script:txtLog.ScrollToCaret()
+          $script:procLogReadPos = $all.Length
+        }
+      } catch {}
+    }
+    # 渐进式进度
     $basePct = [int](($script:procIndex - 1) / $script:procTotal * 100)
     $nextPct = [int]($script:procIndex / $script:procTotal * 100)
     $current = $progBar.Value
@@ -632,6 +693,23 @@ $script:guiTimer.Add_Tick({
 
   # 当前文件处理完了
   if ($proc) {
+    # 读完剩余日志
+    if ($script:procLogFile -and (Test-Path $script:procLogFile)) {
+      try {
+        $all = [IO.File]::ReadAllText($script:procLogFile)
+        if ($all.Length -gt $script:procLogReadPos) {
+          $newText = $all.Substring($script:procLogReadPos)
+          $lines = $newText -split "`n" | Where-Object { $_.Trim().Length -gt 0 }
+          foreach ($line in $lines) {
+            $script:txtLog.AppendText("  $($line.Trim())`r`n")
+          }
+          $script:txtLog.ScrollToCaret()
+        }
+        Remove-Item $script:procLogFile -Force -ErrorAction SilentlyContinue
+      } catch {}
+      $script:procLogFile = ""
+    }
+
     $name = $script:procCurrentFile
     $outFile = $script:procOutFile
     $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -ge 10KB)
