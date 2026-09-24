@@ -504,16 +504,22 @@ function Start-NextFile {
   $script:procCurrentFile = $fi.Name
   $script:procOutFile = $outFile
 
-  # 跳过已存在
+  # 跳过已存在且有效的输出（小于 10KB 认为是损坏文件，重新处理）
   if ((Test-Path $outFile) -and -not $p.Overwrite) {
-    $script:procSkip++
-    Add-Log "[$($script:procIndex)/$($script:procTotal)] 跳过：$($fi.Name)"
-    # 更新进度条
-    $pct = [int](($script:procIndex / $script:procTotal) * 100)
-    $progBar.Value = [Math]::Min(100, [Math]::Max(1, $pct))
-    $lblStatus.Text = "处理中... $($script:procIndex)/$($script:procTotal)"
-    Start-NextFile
-    return
+    $outSize = (Get-Item $outFile).Length
+    if ($outSize -ge 10KB) {
+      $script:procSkip++
+      Add-Log "[$($script:procIndex)/$($script:procTotal)] 跳过：$($fi.Name)"
+      # 更新进度条
+      $pct = [int](($script:procIndex / $script:procTotal) * 100)
+      $progBar.Value = [Math]::Min(100, [Math]::Max(1, $pct))
+      $lblStatus.Text = "处理中... $($script:procIndex)/$($script:procTotal)"
+      Start-NextFile
+      return
+    } else {
+      Add-Log "[$($script:procIndex)/$($script:procTotal)] 输出文件损坏（$([math]::Round($outSize/1KB,1)) KB），重新处理：$($fi.Name)"
+      Remove-Item $outFile -Force -ErrorAction SilentlyContinue
+    }
   }
 
   Add-Log "[$($script:procIndex)/$($script:procTotal)] 处理：$($fi.Name)"
@@ -628,7 +634,7 @@ $script:guiTimer.Add_Tick({
   if ($proc) {
     $name = $script:procCurrentFile
     $outFile = $script:procOutFile
-    $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -gt 1KB)
+    $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -ge 10KB)
     if ($fileOk) {
       $script:procOk++
       $sz = [math]::Round((Get-Item $outFile).Length / 1MB, 1)
