@@ -7,20 +7,20 @@
 
   示例：
     # 4 倍放大整个输入目录（4090 建议这么跑）
-    .\批量放大.ps1 -Input "E:\VideoUpscale\input" -Scale 4
+    .\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Scale 4
 
     # 12G 显存（4070S）：长视频用 tiny-long，省显存
-    .\批量放大.ps1 -Input "a.mp4" -Mode tiny-long -Scale 4
+    .\批量放大.ps1 -InputPath "a.mp4" -Mode tiny-long -Scale 4
 
     # 追求画质：full 模式（更吃显存，适合 4090）
-    .\批量放大.ps1 -Input "a.mp4" -Mode full -Scale 4
+    .\批量放大.ps1 -InputPath "a.mp4" -Mode full -Scale 4
 
     # ComfyUI 还没开，让脚本自己拉起来
-    .\批量放大.ps1 -Input "E:\VideoUpscale\input" -AutoStart
+    .\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -AutoStart
 #>
 
 param(
-  [Parameter(Mandatory = $true)][string]$Input,
+  [Parameter(Mandatory = $true)][string]$InputPath,
   [ValidateSet(2, 3, 4)][int]$Scale = 4,
   [ValidateSet('tiny', 'tiny-long', 'full')][string]$Mode = 'tiny',
   [ValidateSet('FlashVSR-v1.1', 'FlashVSR')][string]$Model = 'FlashVSR-v1.1',
@@ -78,8 +78,8 @@ ComfyUI 没在运行，脚本没法提交任务。二选一：
 }
 
 # ---------- 3. 逐个提交 ----------
-$files = Get-VideoFiles -Path $Input
-if ($files.Count -eq 0) { throw "输入路径下没有找到视频文件：$Input" }
+$files = Get-VideoFiles -Path $InputPath
+if ($files.Count -eq 0) { throw "输入路径下没有找到视频文件：$InputPath" }
 
 $ok = 0; $fail = 0; $skip = 0
 $total = $files.Count

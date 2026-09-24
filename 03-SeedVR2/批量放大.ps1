@@ -14,21 +14,21 @@
 
   示例：
     # 4070S 挂机跑一整个文件夹
-    .\批量放大.ps1 -Input "E:\VideoUpscale\input" -Profile 12g
+    .\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Profile 12g
 
     # 4090 上冲画质，输出 1080 短边、10bit
-    .\批量放大.ps1 -Input "a.mp4" -Profile 24g -Resolution 1080 -TenBit
+    .\批量放大.ps1 -InputPath "a.mp4" -Profile 24g -Resolution 1080 -TenBit
 
     # 两张卡一起跑一个长视频（帧级并行）
-    .\批量放大.ps1 -Input "a.mp4" -Profile 24g -CudaDevice "0,1" -ChunkSize 330
+    .\批量放大.ps1 -InputPath "a.mp4" -Profile 24g -CudaDevice "0,1" -ChunkSize 330
 
     # 显存不够时的手动兜底
-    .\批量放大.ps1 -Input "a.mp4" -Profile custom `
+    .\批量放大.ps1 -InputPath "a.mp4" -Profile custom `
                    -DitModel seedvr2_ema_3b-Q4_K_M.gguf -BlocksToSwap 32 -OffloadCpu -BatchSize 5 -TiledVae
 #>
 
 param(
-  [Parameter(Mandatory = $true)][string]$Input,
+  [Parameter(Mandatory = $true)][string]$InputPath,
 
   [ValidateSet('12g', '16g', '24g', 'custom')][string]$Profile = '24g',
 
@@ -101,13 +101,13 @@ if ($DitModel -and -not (Test-Path (Join-Path $modelDir $DitModel))) {
 if (-not $OutDir) { $OutDir = $OUTPUT_DIR }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 
-$isDir = Test-Path $Input -PathType Container
-if (-not (Test-Path $Input)) { throw "输入路径不存在：$Input" }
+$isDir = Test-Path $InputPath -PathType Container
+if (-not (Test-Path $InputPath)) { throw "输入路径不存在：$InputPath" }
 
 # ---------- 3. 拼命令行 ----------
 # --model_dir 显式指定，免得 CLI 在 import folder_paths 失败时回退到 ./models/SEEDVR2
 # 而受当前工作目录影响。
-$a = @($cli, $Input, '--output', $OutDir, '--output_format', 'mp4',
+$a = @($cli, $InputPath, '--output', $OutDir, '--output_format', 'mp4',
        '--model_dir', $modelDir, '--resolution', $Resolution,
        '--batch_size', $BatchSize, '--seed', $Seed,
        '--color_correction', $ColorCorrection,
@@ -141,7 +141,7 @@ if ($TenBit) { Write-Note '已开启 10bit 输出，务必确认 ffmpeg 在 PATH
 # 单文件模式下 CLI 会自己决定落盘文件名，用「起始时间戳」判断哪些文件是本次新产出的，
 # 比对比文件名集合更可靠（同名文件被覆盖也能认出来）。
 $watch = @($OutDir)
-if (-not $isDir) { $watch += (Split-Path $Input -Parent) }
+if (-not $isDir) { $watch += (Split-Path $InputPath -Parent) }
 $startTime = Get-Date
 
 # ---------- 4. 开跑 ----------
@@ -165,7 +165,7 @@ if ($code -ne 0) {
 
 # ---------- 5. 收尾 ----------
 if (-not $isDir) {
-  $base = [IO.Path]::GetFileNameWithoutExtension($Input)
+  $base = [IO.Path]::GetFileNameWithoutExtension($InputPath)
   $new = @()
   foreach ($d in $watch) {
     $new += Get-ChildItem $d -File -ErrorAction SilentlyContinue |

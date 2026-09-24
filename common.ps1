@@ -154,16 +154,23 @@ function Invoke-HfDownload {
   Write-Detail "仓库 $Repo  ->  $LocalDir"
   Write-Detail "下载源：$HF_ENDPOINT"
 
-  $code = @'
+  # 把 Python 代码写临时文件执行，避免命令行传参时引号被 shell 吃掉
+  $pyFile = Join-Path $env:TEMP "hf_download_$([guid]::NewGuid().ToString('N')).py"
+  @"
 import sys
 from huggingface_hub import snapshot_download
 repo, local, inc = sys.argv[1], sys.argv[2], sys.argv[3]
 pats = None if inc == "*" else [p.strip() for p in inc.split(",") if p.strip()]
 p = snapshot_download(repo_id=repo, local_dir=local, allow_patterns=pats, max_workers=4)
 print("DOWNLOADED_TO", p)
-'@
-  & $COMFY_PY -c $code $Repo $LocalDir $Include
-  if ($LASTEXITCODE -ne 0) { throw "从 $Repo 下载模型失败（源：$HF_ENDPOINT）" }
+"@ | Out-File -FilePath $pyFile -Encoding utf8
+
+  try {
+    & $COMFY_PY $pyFile $Repo $LocalDir $Include
+    if ($LASTEXITCODE -ne 0) { throw "从 $Repo 下载模型失败（源：$HF_ENDPOINT）" }
+  } finally {
+    Remove-Item $pyFile -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Assert-ModelFiles {

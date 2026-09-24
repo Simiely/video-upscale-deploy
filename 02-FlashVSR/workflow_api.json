@@ -1,0 +1,41 @@
+{
+  "1": {
+    "class_type": "VHS_LoadVideoPath",
+    "inputs": {
+      "video": "C:\\AI\\ComfyUI\\input\\test_720p.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    }
+  },
+  "2": {
+    "class_type": "FlashVSRNode",
+    "inputs": {
+      "frames": ["1", 0],
+      "model": "FlashVSR-v1.1",
+      "mode": "tiny",
+      "scale": 2,
+      "tiled_vae": true,
+      "tiled_dit": true,
+      "unload_dit": false,
+      "seed": 0
+    }
+  },
+  "3": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["2", 0],
+      "audio": ["1", 2],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "FlashVSR_test",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

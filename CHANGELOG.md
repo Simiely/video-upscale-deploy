@@ -4,6 +4,48 @@
 
 ---
 
+## v1.4.0 · 2026-09-24
+
+方案二 FlashVSR 本机部署跑通（RTX 4070 SUPER 12G），并修复脚本与文档中的参数名不一致问题。
+
+### 新增
+
+- `02-FlashVSR/workflow_api.json`：可直接 POST 给 ComfyUI `/prompt` 的 API 格式工作流
+  （`VHS_LoadVideoPath` → `FlashVSRNode` → `VHS_VideoCombine`，含音轨回接）
+- 使用指南新增「RTX 4070 SUPER 12G 实测」小节：速度、显存峰值、分块必要性
+
+### 修复
+
+- **参数名冲突**：`02-FlashVSR/批量放大.ps1` 与 `03-SeedVR2/批量放大.ps1` 的 `-Input`
+  与 PowerShell 自动变量 `$input` 冲突，导致 `Get-VideoFiles -Path $Input` 拿到空字符串而报
+  `Cannot bind argument to parameter 'Path' because it is an empty string`。
+  统一改名为 `-InputPath`（方案一早在 v1.1.0 已改，这两个脚本漏改）。
+- **HF 下载函数**：`common.ps1` 的 `Invoke-HfDownload` 用 `python -c` 传多行代码时引号被 shell 吃掉，
+  生成 `inc == *`、`inc.split(,)` 这类非法语法。改为写临时 `.py` 文件再执行。
+- 使用指南中 9 处 `-Input` 示例同步改为 `-InputPath`。
+
+### 实测数据（4070 SUPER 12G，tiny 模式，tiled_vae/tiled_dit 默认开启）
+
+| 源 | 帧数 | 输出 | 耗时 | 速度 |
+|---|---|---|---|---|
+| 1280×720（约 6 秒） | 143 | 2560×1440 | 586 s | 4.10 s/帧 |
+| 1280×720（2 秒） | 48 | 2560×1440 | 196 s | 4.08 s/帧 |
+
+- 显存峰值约 11.4 GB / 12.3 GB，GPU 利用率 100%
+- 帧数、帧率、音轨原样保留
+- **关掉 `tiled_dit` 或 `tiled_vae` 必然 OOM**（节点申请 19.02 GiB > 12G 上限 11.99 GiB），
+  12G 卡必须保持分块开启；分块会把 720p 输入切成 18 个 256px 空间块逐个推理
+
+### 技术说明
+
+- FlashVSR 权重仓库为 `JunhaoZhuang/FlashVSR-v1.1`，共 8 个文件约 6.5 GB，
+  落到 `ComfyUI\models\FlashVSR-v1.1`（节点源码 `nodes.py` 里 `model_path = models_dir / model` 写死这个布局）
+- 主模型 `diffusion_pytorch_model_streaming_dmd.safetensors` 约 5.29 GB / 825 个张量，
+  校验方式：读 safetensors 头部的 JSON 长度并解析张量表
+- hf-mirror 的 xet 传输协议在拉大文件时不稳定，需设 `HF_HUB_DISABLE_XET=1` 并降为单线程续传
+
+---
+
 ## v1.3.0 · 2026-09-24
 
 GUI 稳定性修复 + 深色主题。

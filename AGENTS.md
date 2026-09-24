@@ -16,7 +16,7 @@
 | ComfyUI-Manager | `ltdrdata/ComfyUI-Manager` |
 | 视频读写节点 | `Kosinkadink/ComfyUI-VideoHelperSuite` |
 | 方案二节点 | `lihaoyun6/ComfyUI-FlashVSR_Ultra_Fast` |
-| 方案二权重 | HF `JunhaoZhuang/FlashVSR-v1.1`（约 7 GB，4 个文件） |
+| 方案二权重 | HF `JunhaoZhuang/FlashVSR-v1.1`（4 个主要文件约 6.95 GB，落到 `models\FlashVSR-v1.1`） |
 | 方案三节点 | `numz/ComfyUI-SeedVR2_VideoUpscaler`（**v2.5.24**，自带 `inference_cli.py`） |
 | 方案三权重 | HF `numz/SeedVR2_comfyUI` + `AInVFX/SeedVR2_comfyUI` |
 | 方案一 | `k4yt3x/video2x` **6.4.0** Windows 便携版（C++/Vulkan，不依赖 Python/CUDA） |
@@ -32,6 +32,10 @@
 - **`--dit_model` 只认注册表里的名字**：候选项 = 节点 `src/utils/model_registry.py` 的 `MODEL_REGISTRY` ∪ 磁盘已有文件。名字写错，ComfyUI 下拉框里就选不到。
 - **FlashVSR 需要 `posi_prompt.pth`**：它不在 HF 权重里，随节点仓库提交，由 `nodes.py` 从节点目录加载。必须完整 clone，不能用手工 zip。
 - **NVENC 格式没有 `crf`**：VideoHelperSuite 里 `nvenc_*` 用 `bitrate` + `megabit`，`h264/h265-mp4` 用 `crf`。传错会被静默忽略，输出质量不受控。
+- **批量脚本的输入参数叫 `-InputPath`，不能叫 `-Input`**：`$Input` 会撞 PowerShell 自动变量 `$input`，`Get-VideoFiles -Path $Input` 拿到空串后报 `Cannot bind argument to parameter 'Path' because it is an empty string`。三个批量脚本统一用 `-InputPath`，改脚本/文档时别改回去。
+- **12G 卡跑 FlashVSR 必须开分块**：`tiled_dit` / `tiled_vae` 关掉任意一个都会 OOM（实测节点申请 19.02 GiB，而 12G 卡上限 11.99 GiB）。这两个开关只对 24G 卡有意义。
+- **FlashVSR 权重目录布局是写死的**：节点 `nodes.py` 用 `model_path = models_dir / model`，所以必须落在 `models\FlashVSR-v1.1`，不能套一层 `models\FlashVSR\FlashVSR-v1.1`。
+- **hf-mirror 拉大文件要关 xet**：设 `HF_HUB_DISABLE_XET=1` 并降为单线程续传，否则 5 GB 级文件会反复中断，还会留下巨型 `.incomplete` 残留。
 
 ## 约定
 
