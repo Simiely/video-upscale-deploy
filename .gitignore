@@ -1,0 +1,25 @@
+# Obsidian 本地配置
+.obsidian/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 模型权重与运行产物（由安装脚本从 HuggingFace 拉取，不入库）
+models/
+*.safetensors
+*.ckpt
+*.pth
+*.gguf
+
+# 视频素材与成品
+input/
+output/
+*.mp4
+*.mkv
+*.mov
+
+# 临时文件
+*.log
+*.tmp
