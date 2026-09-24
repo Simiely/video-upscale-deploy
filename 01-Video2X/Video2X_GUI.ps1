@@ -436,15 +436,110 @@ $cboModel.Add_SelectedIndexChanged({
 # ==================== 开始处理 ====================
 
 $script:isRunning = $false
-$script:currentJob = $null
-$script:guiTimer = New-Object System.Windows.Forms.Timer
-$script:guiTimer.Interval = 800
-$script:guiTimerOutDir = ""
+$script:guiTimer = [System.Windows.Forms.Timer]::new()
+$script:guiTimer.Interval = 500
+
+# 处理队列状态
+$script:procFiles = @()      # 待处理文件列表
+$script:procIndex = 0        # 当前处理到第几个
+$script:procTotal = 0        # 总文件数
+$script:procOutDir = ""      # 输出目录
+$script:procArgs = @{}       # 当前处理参数
+$script:procCurrentFile = "" # 当前文件名
+$script:procOutFile = ""     # 当前输出文件路径
+$script:procProcess = $null  # 当前 video2x 进程
+$script:procOk = 0
+$script:procSkip = 0
+$script:procFail = 0
+
+function Build-ArgList {
+  param([string]$InFile, [string]$OutFile)
+  $p = $script:procArgs
+  $a = @('-i', "`"$InFile`"", '-o', "`"$OutFile`"", '-p', $p.Processor,
+        '-c', 'libx264', '-e', 'crf=' + $p.Crf, '-e', 'preset=slow',
+        '-d', $p.Gpu, '--no-progress')
+  switch ($p.Processor) {
+    'realesrgan' { $a += @('-s', $p.Scale, '--realesrgan-model', $p.Model) }
+    'realcugan'  { $a += @('-s', $p.Scale, '--realcugan-model', $p.Model) }
+    'libplacebo' { $a += @('-w', $p.Width, '-h', $p.Height, '--libplacebo-shader', $p.Model) }
+    'rife'       { $a += @('-m', $p.Scale, '--rife-model', $p.Model) }
+  }
+  return ($a -join ' ')
+}
+
+function Start-NextFile {
+  if ($script:procIndex -ge $script:procTotal) {
+    # 全部处理完
+    $script:guiTimer.Stop()
+    $script:isRunning = $false
+    $script:procProcess = $null
+    $progBar.Value = 100
+    $ok = $script:procOk; $skip = $script:procSkip; $fail = $script:procFail
+    $lblStatus.Text = "完成：成功 $ok / 跳过 $skip / 失败 $fail"
+    Add-Log "---"
+    Add-Log "全部结束：成功 $ok / 跳过 $skip / 失败 $fail"
+    Add-Log "输出目录：$script:procOutDir"
+    $btnStart.Text = "▶  开始放大"
+    $btnStart.Enabled = $true
+
+    if ($fail -eq 0 -and ($ok + $skip) -gt 0) {
+      $res = [System.Windows.Forms.MessageBox]::Show(
+        "处理完成！成功 $ok，跳过 $skip`n是否打开输出目录？",
+        "完成", "YesNo", "Question")
+      if ($res -eq "Yes") { explorer $script:procOutDir }
+    }
+    return
+  }
+
+  $script:procIndex++
+  $f = $script:procFiles[$script:procIndex - 1]
+  $fi = Get-Item $f
+  $base = [IO.Path]::GetFileNameWithoutExtension($fi.Name)
+  $p = $script:procArgs
+
+  if ($p.Processor -eq 'rife') { $suffix = "_$($p.Scale)xfps" }
+  elseif ($p.Processor -eq 'libplacebo') { $suffix = "_$($p.Width)x$($p.Height)" }
+  else { $suffix = "_$($p.Scale)x" }
+  $outFile = Join-Path $script:procOutDir "$base$suffix.mp4"
+  $script:procCurrentFile = $fi.Name
+  $script:procOutFile = $outFile
+
+  # 跳过已存在
+  if ((Test-Path $outFile) -and -not $p.Overwrite) {
+    $script:procSkip++
+    Add-Log "[$($script:procIndex)/$($script:procTotal)] 跳过：$($fi.Name)"
+    # 更新进度条
+    $pct = [int](($script:procIndex / $script:procTotal) * 100)
+    $progBar.Value = [Math]::Min(100, [Math]::Max(1, $pct))
+    $lblStatus.Text = "处理中... $($script:procIndex)/$($script:procTotal)"
+    Start-NextFile
+    return
+  }
+
+  Add-Log "[$($script:procIndex)/$($script:procTotal)] 处理：$($fi.Name)"
+  $lblStatus.Text = "处理中... $($script:procIndex)/$($script:procTotal) - $($fi.Name)"
+
+  # 启动 video2x 进程
+  $argList = Build-ArgList -InFile $f -OutFile $outFile
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $script:exePath
+  $psi.Arguments = $argList
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = [System.Diagnostics.Process]::new()
+  $proc.StartInfo = $psi
+  $proc.EnableRaisingEvents = $true
+  $script:procProcess = $proc
+  $proc.Start() | Out-Null
+  $proc.BeginOutputReadLine()
+  $proc.BeginErrorReadLine()
+}
 
 $btnStart.Add_Click({
   if ($script:isRunning) {
-    # 停止逻辑在 job 层面处理，这里只是提示
-    $lblStatus.Text = "处理中无法取消（请等待完成）"
     return
   }
 
@@ -478,11 +573,30 @@ $btnStart.Add_Click({
     return
   }
 
+  # 初始化状态
   $script:isRunning = $true
+  $script:procFiles = @($files.FullName)
+  $script:procIndex = 0
+  $script:procTotal = $files.Count
+  $script:procOutDir = $outDir
+  $script:procOk = 0
+  $script:procSkip = 0
+  $script:procFail = 0
+  $script:procArgs = @{
+    Processor = $processor
+    Model = $model
+    Scale = $scaleVal
+    Width = $width
+    Height = $height
+    Gpu = $gpuIdx
+    Crf = $crf
+    Overwrite = $overwrite
+  }
+
   $btnStart.Text = "处理中..."
   $btnStart.Enabled = $false
   $progBar.Value = 0
-  $txtLog.Clear()
+  $script:txtLog.Clear()
 
   Add-Log "输入：$inputPath"
   Add-Log "处理器：$processor / $model"
@@ -490,112 +604,45 @@ $btnStart.Add_Click({
   Add-Log "---"
   $lblStatus.Text = "准备中..."
 
-  $filePaths = $files.FullName
-
-  $script:guiTimerOutDir = $outDir
-  $script:currentJob = Start-Job -ScriptBlock {
-    param($exe, $filePaths, $outDir, $processor, $model, $scale, $w, $h,
-          $gpu, $crfVal, $overwriteFlag)
-
-    $results = @()
-    $idx = 0
-    foreach ($f in $filePaths) {
-      $idx++
-      $fi = Get-Item $f
-      $base = [IO.Path]::GetFileNameWithoutExtension($fi.Name)
-
-      if ($processor -eq 'rife') { $suffix = "_${scale}xfps" }
-      elseif ($processor -eq 'libplacebo') { $suffix = "_$($w)x$h" }
-      else { $suffix = "_${scale}x" }
-      $outFile = Join-Path $outDir "$base$suffix.mp4"
-
-      $r = @{
-        Index = $idx
-        Total = $filePaths.Count
-        Name = $fi.Name
-        OutFile = $outFile
-        Skipped = $false
-        Success = $false
-        SizeMB = 0
-        Error = ""
-      }
-
-      if ((Test-Path $outFile) -and -not $overwriteFlag) {
-        $r.Skipped = $true
-        $r.Success = $true
-        $results += $r
-        continue
-      }
-
-      $args = @('-i', $f, '-o', $outFile, '-p', $processor,
-                '-c', 'libx264', '-e', "crf=$crfVal", '-e', 'preset=slow',
-                '-d', $gpu, '--no-progress')
-      switch ($processor) {
-        'realesrgan' { $args += @('-s', $scale, '--realesrgan-model', $model) }
-        'realcugan'  { $args += @('-s', $scale, '--realcugan-model', $model) }
-        'libplacebo' { $args += @('-w', $w, '-h', $h, '--libplacebo-shader', $model) }
-        'rife'       { $args += @('-m', $scale, '--rife-model', $model) }
-      }
-
-      $null = & $exe @args 2>&1
-      $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -gt 0)
-      $r.Success = $fileOk
-      if ($fileOk) { $r.SizeMB = [math]::Round((Get-Item $outFile).Length / 1MB, 1) }
-      else { $r.Error = "处理失败" }
-      $results += $r
-    }
-    return $results
-  } -ArgumentList $script:exePath, $filePaths, $outDir, $processor, $model,
-                   $scaleVal, $width, $height, $gpuIdx, $crf, $overwrite
-
   $script:guiTimer.Start()
+  Start-NextFile
 })
 
-# ---------- Timer 事件（只注册一次） ----------
+# ---------- Timer 轮询进程状态 ----------
 $script:guiTimer.Add_Tick({
-  if (-not $script:currentJob) { return }
-  if ($script:currentJob.State -eq 'Completed' -or $script:currentJob.State -eq 'Failed') {
-    $script:guiTimer.Stop()
-    $results = Receive-Job -Job $script:currentJob
-    Remove-Job -Job $script:currentJob -Force
-    $script:currentJob = $null
-
-    $ok = 0; $skip = 0; $fail = 0
-    foreach ($r in $results) {
-      if ($r.Skipped) {
-        $skip++
-        Add-Log "[$($r.Index)/$($r.Total)] 跳过：$($r.Name)"
-      } elseif ($r.Success) {
-        $ok++
-        Add-Log "[$($r.Index)/$($r.Total)] 完成：$($r.Name)（$($r.SizeMB) MB）"
-      } else {
-        $fail++
-        Add-Log "[$($r.Index)/$($r.Total)] 失败：$($r.Name) - $($r.Error)"
-      }
+  if (-not $script:isRunning) { return }
+  $proc = $script:procProcess
+  if ($proc -and -not $proc.HasExited) {
+    # 还在跑，渐进式进度
+    $basePct = [int](($script:procIndex - 1) / $script:procTotal * 100)
+    $nextPct = [int]($script:procIndex / $script:procTotal * 100)
+    $current = $progBar.Value
+    $target = $nextPct - 3
+    if ($current -lt $target) {
+      $progBar.Value = $current + 1
     }
-
-    $progBar.Value = 100
-    $lblStatus.Text = "完成：成功 $ok / 跳过 $skip / 失败 $fail"
-    Add-Log "---"
-    Add-Log "全部结束：成功 $ok / 跳过 $skip / 失败 $fail"
-    Add-Log "输出目录：$script:guiTimerOutDir"
-
-    $script:isRunning = $false
-    $btnStart.Text = "▶  开始放大"
-    $btnStart.Enabled = $true
-
-    if ($fail -eq 0 -and ($ok + $skip) -gt 0) {
-      $res = [System.Windows.Forms.MessageBox]::Show(
-        "处理完成！成功 $ok，跳过 $skip`n是否打开输出目录？",
-        "完成", "YesNo", "Question")
-      if ($res -eq "Yes") { explorer $script:guiTimerOutDir }
-    }
-  } else {
-    if ($progBar.Value -lt 90) {
-      $progBar.Value = $progBar.Value + 1
-    }
-    $lblStatus.Text = "处理中...（请稍候）"
+    return
   }
+
+  # 当前文件处理完了
+  if ($proc) {
+    $name = $script:procCurrentFile
+    $outFile = $script:procOutFile
+    $fileOk = (Test-Path $outFile) -and ((Get-Item $outFile).Length -gt 1KB)
+    if ($fileOk) {
+      $script:procOk++
+      $sz = [math]::Round((Get-Item $outFile).Length / 1MB, 1)
+      Add-Log "[$($script:procIndex)/$($script:procTotal)] 完成：$name（$sz MB）"
+    } else {
+      $script:procFail++
+      Add-Log "[$($script:procIndex)/$($script:procTotal)] 失败：$name"
+    }
+    try { $proc.Close() } catch {}
+    $script:procProcess = $null
+  }
+
+  # 处理下一个
+  Start-NextFile
 })
 
 # 关闭确认
