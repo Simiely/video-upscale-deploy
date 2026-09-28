@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-24 v1.5.0 SeedVR2 本机部署验证通过（三套方案均已实跑）
+> 📌 **文档基线**：2026-09-28 v1.6.0 图形界面通路补齐（`workflows/` 目录 + 启动脚本输出目录可配）
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
@@ -40,6 +40,11 @@
 - **别用 `Test-Cmd 'ffmpeg'` 判断 ffmpeg 可用**：精简构建也在 PATH 上，会被误判为可用。统一用 `Resolve-FfmpegTool`（按 `-demuxers` 找 rawvideo、按 `-encoders` 找 libx265 做能力探测）。
 - **SeedVR2 的 CLI 完全不处理音频**：`inference_cli.py` 的 `add_argument` 全表里没有任何音频项，输出天然无音轨。单文件与目录两种模式都由 `批量放大.ps1` 收尾时调 `Restore-AudioTrack` 用 ffmpeg 流拷贝接回（`-c:v copy -c:a copy`）。
 - **校验输出要看编码，不能只看「跑完了」**：SeedVR2 在 ffmpeg 后端不可用时会**静默退回 opencv**，写成 MPEG-4 Part 2（`codec_name=mpeg4`，同画质体积大得多）。用 ffprobe 核对 `codec_name` 应为 `h264`、帧数与源一致、有 `aac` 音轨。
+- **`VHS_LoadVideoPath` 连了 `audio` 就不能喂无音轨素材**：该节点的 audio 输出是**惰性对象**，被下游引用时才调 `get_audio()`（`videohelpersuite/utils.py`）；源没有 audio 流时 ffmpeg 报 `Output file does not contain any stream`，VHS 把 stderr 包成 Exception **直接抛，不做降级**——任务在 node 1 就 error，信息是 `VHS failed to extract audio from ...`。无音轨素材要么断开这条线（见 `workflows/FlashVSR/FlashVSR-12G-无音轨素材.json`），要么先补一条静音轨。用 `ffprobe -v error -show_entries stream=codec_type -of csv=p=0 x.mp4` 判断。
+- **ComfyUI 的产物只能落在 output 根目录之内**：`folder_paths.get_save_image_path()` 会校验，绝对路径（跨盘/同盘）与 `..\..` 一律抛 `Saving image outside the output folder is not allowed.`。改落点只能用启动参数 `--output-directory`（`启动ComfyUI.ps1` 已暴露为 `-OutputDirectory`，默认跟随 `common.ps1` 的 `UPSCALE_IO\output`）——**改工作流里的 `filename_prefix` 做不到**。
+- **别用「倍率」估 FlashVSR 的时间，要按输出分辨率估**：实测 720p→1440p = 3.5 s/帧，720p→2160p（scale 3）= **≈17 s/帧**。面积只涨 2.25 倍，耗时涨约 5 倍（tile 数与单 tile 窗口同时变大），**scale 是超线性的**，按倍率估会严重低估。
+- **`/interrupt` 打不断 CUDA 算子**：`POST /interrupt` 返回 200、日志也打印 `Global interrupt`，但队列仍 `running`、GPU 仍 100%（VAE 的 tiled kernel 要等算子返回，可能几分钟）。只能杀进程：`netstat -ano` 找 8188 的 PID → `Stop-Process -Id <pid> -Force`；停完三项核验：端口释放 / 显存回落 / `nvidia-smi --query-compute-apps` 里无 python。
+- **`workflows/` 下的 json 故意用 API 格式而非 UI 格式**：前端 `isApiJson(e)` 的判定是「是对象且每个值都带 `class_type`」，满足即自动还原成节点图（源码见 `comfyui_frontend_package/static/assets/settingStore-*.js`）。UI 格式要维护 `widgets_values` 的严格顺序，还要处理 `format` 联动出的动态参数（`h264-mp4` → `crf`；`nvenc_*` → `bitrate` + `megabit`），**写错不会报错、只会静默用默认值**，比手动连线更难查。
 
 ## 约定
 

@@ -4,6 +4,73 @@
 
 ---
 
+## v1.6.0 · 2026-09-28
+
+图形界面通路补齐：新增 `workflows/` 目录（拖入即用的工作流配置），启动脚本支持指定输出目录，
+并把本轮**只有图形界面实跑才会暴露**的问题与实测数据固化下来。
+
+### 新增
+
+- **`workflows/` 目录**：按方案分类的图形界面工作流，拖进 ComfyUI 网页即自动还原节点图
+  - `workflows/README.md` —— 索引、用法、参数速查、实测性能
+  - `workflows/FlashVSR/FlashVSR-12G-有声素材.json`
+  - `workflows/FlashVSR/FlashVSR-12G-无音轨素材.json`
+  - `workflows/SeedVR2/SeedVR2-12G-1080p.json`
+- **`启动ComfyUI.ps1` 新增 `-OutputDirectory`**：默认取 `common.ps1` 的 `UPSCALE_IO\output`，
+  图形界面产物与命令行脚本落点一致（原来默认落在 `C:\AI\ComfyUI\output`）。
+- `AGENTS.md` 新增三条关键坑（无音轨素材、输出路径硬校验、scale 超线性）。
+
+### 关键问题与方案
+
+- **图形界面跑无音轨素材必崩**。`VHS_LoadVideoPath` 的 `audio` 输出是惰性对象，被下游引用时才
+  调 `get_audio()`；源无音频流时 ffmpeg 报 `Output file does not contain any stream`，
+  VHS 把 stderr 包成 Exception 抛出，**不做降级**，任务在第一个节点就 error。
+  → 方案：工作流拆成「有声素材版 / 无音轨素材版」两个文件，后者不连 `audio` 线。
+- **产物不能写到 output 根目录之外**。实测 `folder_paths.get_save_image_path()`：
+  相对子目录 OK；绝对路径（跨盘/同盘）、`..\..` 全部抛
+  `Saving image outside the output folder is not allowed.`
+  → 想换落点只能改 `--output-directory`，改不了单个工作流的输出位置。
+- **ComfyUI 的软中断打不断 CUDA 算子**。`POST /interrupt` 返回 200、日志也打印
+  `Global interrupt`，但队列仍 `running`、GPU 仍 100%（VAE 的 tiled CUDA kernel 要等算子返回）。
+  → 只能终止进程：`netstat` 找 8188 的 PID → `Stop-Process -Force`。
+  停止后按三项核验：端口释放 / 显存回落 / `nvidia-smi --query-compute-apps` 无 python。
+
+### 实测数据（RTX 4070 SUPER 12G）
+
+**FlashVSR 两档对比**（同为 `tiny-long`，源 1280×720 / 24fps）：
+
+| 配置 | 输出 | 时长 | 每帧耗时 |
+|---|---|---|---|
+| `scale 2` | 2560×1440 | 48 帧 | **3.5 s/帧** |
+| `scale 3` | 3840×2160 | 143 帧 | **≈17 s/帧**（端到端 41 分 46 秒）|
+
+→ **scale 的提升是超线性的**：2→3 面积只涨 2.25 倍，耗时涨约 5 倍（tile 数与单 tile 窗口同时变大）。
+按倍率估时间会严重低估，要按**输出分辨率**估。
+
+**`crf` 对文件大小的影响**（`h264-mp4`，4K 素材二次编码对照）：
+
+| crf | 相对 19 |
+|---|---|
+| 17 | +31.9% |
+| 19 | 基准（VHS 默认）|
+| 23 | −45.6% |
+
+规律：**每 +2 约小 21%，每 +6 约减半**（与 x264 的 `2^(-2/6)=0.794` 吻合）。
+**建议填 17**：该任务中编码只占 43 秒 / 总 2506 秒 = **1.7%**，
+多花几秒换回 40 分钟推理的细节，非常划算。
+
+**闪退排查结论（无音轨素材）**：14:18 首次实跑 `Group 2133702107_1.mp4` 在 node 1 报
+`VHS failed to extract audio` → 比对素材库发现**该批 20+ 个素材无音轨**；
+断开音频连线后同素材以 `frame_load_cap=1` 快速验证 **85.1 秒 success**（2560×1440）。
+
+### 文档
+
+- `workflows/README.md`：新增（含「为什么用 API 格式 JSON 而不是 UI 格式」的源码依据）
+- `README.md`：目录结构、文档索引、快速开始三处补入 workflows 与图形界面入口
+- `AGENTS.md`：基线更新到 v1.6.0，补三条坑
+
+---
+
 ## v1.5.0 · 2026-09-24
 
 方案三 SeedVR2 本机部署跑通（RTX 4070 SUPER 12G）。这一版修的问题全部是**只有真跑一遍才会暴露**的——

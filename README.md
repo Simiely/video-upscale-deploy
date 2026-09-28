@@ -67,6 +67,16 @@ powershell -File .\02-FlashVSR\批量放大.ps1 -InputPath "E:\VideoUpscale\inpu
 powershell -File .\03-SeedVR2\批量放大.ps1 -InputPath "E:\VideoUpscale\input" -Profile 12g
 ```
 
+### 图形界面（不用命令行）
+
+```powershell
+# 启动服务（会自动开浏览器）
+powershell -ExecutionPolicy Bypass -File .\00-ComfyUI底座\启动ComfyUI.ps1
+```
+
+然后把 [workflows/](workflows/) 里的 `.json` **直接拖进网页**，节点与连线自动还原，改完素材路径点 Run 即可。
+用法、参数速查与实测性能见 [workflows/README.md](workflows/README.md)。
+
 **路径约定**：只改 `common.ps1` 顶部两个变量，所有脚本自动跟着走，不用逐个改。
 
 ```
@@ -92,6 +102,10 @@ video-upscale-deploy/
 ├── .gitignore
 ├── docs/
 │   └── 使用指南.md          # 完整部署手册（含逐条修订记录）
+├── workflows/              # 图形界面工作流（拖进 ComfyUI 网页即用）
+│   ├── README.md           #   索引、用法、参数速查、实测性能
+│   ├── FlashVSR/           #   方案二：有声素材版 / 无音轨素材版
+│   └── SeedVR2/            #   方案三：12G 档位
 ├── common.ps1              # 三套方案共用的配置与工具函数
 ├── 检查环境.ps1             # 环境体检（只读）
 ├── 00-ComfyUI底座/
@@ -112,6 +126,7 @@ video-upscale-deploy/
 
 | 文档 | 给谁看 | 内容 |
 |---|---|---|
+| [workflows/README.md](workflows/README.md) | 使用者 | 图形界面工作流：拖入即用、两个 FlashVSR 版本的区别、参数速查、实测性能 |
 | [docs/使用指南.md](docs/使用指南.md) | 使用者 | 执行顺序、每个步骤的作用、全部参数说明、显卡分配、图形界面连线表、常见问题、修订记录 |
 | [AGENTS.md](AGENTS.md) | AI / 未来的你 | 技术栈精确版本、关键坑、约定、常用命令 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 开发者 | 项目概览、架构说明、关键问题与方案 |
