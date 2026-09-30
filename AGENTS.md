@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-30 v1.7.0 SeedVR2 编码器路径定位与处置（ffmpeg 固定落点 + 子进程 PATH 复核 + 补推 3 处既有修复）(commit `待回填`)
+> 📌 **文档基线**：2026-09-30 v1.7.0 SeedVR2 编码器路径定位与处置（ffmpeg 固定落点 + 子进程 PATH 复核 + 补推 3 处既有修复）(commit `5fde16a8`)
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
