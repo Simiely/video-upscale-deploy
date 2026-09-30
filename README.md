@@ -33,6 +33,9 @@
 - Windows 10 / 11
 - NVIDIA 显卡 + 较新驱动（方案二、三需要 CUDA，方案一需要 Vulkan）
 - git、Python 3.12 或 3.13（方案一不需要）
+- **ffmpeg（方案三需要）**：SeedVR2 的 CLI 只认 PATH 上的裸命令 `ffmpeg`，且要求是
+  **支持 rawvideo + libx264/libx265 的完整构建**。推荐直接放到 `<UPSCALE_ROOT>\ffmpeg\bin\`
+  并把该目录加进**用户级 PATH** —— 详见 [docs/使用指南.md](docs/使用指南.md) 常见问题第 8 条
 - 磁盘：程序与模型放 SSD，素材与成品放机械盘，读写特性能对上
 
 ## 安装（按这个顺序做）

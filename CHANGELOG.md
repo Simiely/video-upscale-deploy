@@ -4,6 +4,64 @@
 
 ---
 
+## v1.7.0 · 2026-09-30
+
+把 SeedVR2「编码器路径」这个遗留问题一次定位到底，补齐 ffmpeg 的**固定落点**与**开跑前自检**，
+并**首次把 3 处只在本机改过、从未推送的修复补上仓**。本版不改三套方案的功能行为。
+
+### 定位：不是 ffmpeg 不完整，是子进程环境被重写
+
+- **更正一处长期误判**：`common.ps1` 注释与手册曾断言 TRAE 自带的 ffmpeg 是
+  `--disable-everything` 精简构建。实测 `%APPDATA%\TRAE SOLO CN\...\app\ffmpeg\ffmpeg.exe`
+  是 **gyan.dev 8.1-full**，rawvideo / libx264 / libx265 齐全，同目录还有 `ffprobe.exe`。
+- **真实机制**：`inference_cli.py` 写死裸命令 `ffmpeg`（`shutil.which` 校验 +
+  `subprocess.Popen(['ffmpeg', ...])` 编码），全表没有 `--ffmpeg_path` 参数 ⇒ 只认 PATH；
+  而某些宿主（AI agent 的执行环境）**创建子进程时用固定快照重写环境**，
+  运行时改 `$env:PATH` 传不到子进程。
+- 复现证据（同一进程内三件事同时成立）：`Enable-FfmpegOnPath` 返回正确路径 →
+  父进程 `$env:PATH` 含该目录 → 子进程 `shutil.which('ffmpeg')` 仍为 `None`，
+  而 `os.path.isfile(<该路径>)` 为 `True`、`PATHEXT` 正常。
+  旁证：子进程 PATH 里**有**注册表级用户 PATH 中的条目，却没有运行时注入的那条。
+- **结论**：运行时注入在普通终端有效、在改写环境的宿主里无效 ⇒ 两机制互为兜底，
+  但**只有写进注册表级用户 PATH 才在所有场景下成立**。
+
+### 新增
+
+- `03-SeedVR2\批量放大.ps1`：`Enable-FfmpegOnPath` 之后增加**真实子进程复核** ——
+  用 venv python 跑一次 `shutil.which('ffmpeg')`，拿不到就以明确文案立刻报错，
+  不再等到 CLI 抛出 `requires ffmpeg in PATH` 才失败。
+- `README.md`：环境要求补 ffmpeg 一条（**完整构建** + 推荐落点 + 指向手册常见问题第 8 条）。
+
+### 修复（补推本机既有改动，此前只在本地）
+
+- `common.ps1`：`$ErrorActionPreference` 由 `'Stop'` 改为 `'Continue'` ——
+  `Stop` 会把 python/git 写到 stderr 的**普通日志**当致命错误，导致 ComfyUI 节点自检、
+  SeedVR2 自检**误判失败**（脚本里真正的失败都用显式 `throw` / `$LASTEXITCODE` 判定）。
+- `00-ComfyUI底座\安装ComfyUI.ps1`：新增 `PIP_TORCH_INDEX_CU130` 覆盖开关，
+  未设置时行为与原来完全一致（仍走 `download.pytorch.org`）。
+- `02-FlashVSR\安装FlashVSR.ps1`：节点自检的失败判据去掉裸 `Traceback`
+  （ComfyUI 退出阶段 filelock 等组件会打印无害 Traceback，必然误报），
+  改用精确标志 `Cannot import` / `Failed to import` / `ImportFailed` / `IMPORT FAILED`。
+
+### 文档
+
+- `docs\使用指南.md`：常见问题第 8 条重写 —— 先区分「ffmpeg 是精简构建」与
+  「子进程环境被重写」两类成因，再给出注册表级 PATH 的确定解法与自检方式；
+  修订记录新增第 29 条。
+- `AGENTS.md`：更正 ffmpeg 那条关键坑，新增「别再把 TRAE 自带 ffmpeg 当精简构建」，
+  基线更新至 v1.7.0。
+
+### 推荐落点（本机已按此落地）
+
+```
+<UPSCALE_ROOT>\ffmpeg\bin\
+  ffmpeg.exe    <- 完整构建（含 rawvideo 与 libx264/libx265）
+  ffprobe.exe
+```
+把该目录写进**用户级** PATH，并设用户级 `FFMPEG_PATH`；`<UPSCALE_ROOT>` 默认值见 `common.ps1`。
+
+---
+
 ## v1.6.0 · 2026-09-28
 
 图形界面通路补齐：新增 `workflows/` 目录（拖入即用的工作流配置），启动脚本支持指定输出目录，

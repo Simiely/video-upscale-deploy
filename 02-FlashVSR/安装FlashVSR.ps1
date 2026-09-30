@@ -85,7 +85,9 @@ Push-Location $COMFY_DIR
 try {
   $out = & $COMFY_PY main.py --quick-test-for-ci 2>&1
   $code = $LASTEXITCODE
-  $bad = $out | Select-String -Pattern 'Traceback', 'Cannot import', 'ImportFailed', 'Failed to import'
+# 只认「节点导入失败」的明确标志。不能用裸 Traceback 兜底：
+# ComfyUI 退出阶段 filelock 等组件会打印无害 Traceback，会把自检误判为失败（实测）。
+  $bad = $out | Select-String -Pattern 'Cannot import', 'Failed to import', 'ImportFailed', 'IMPORT FAILED'
   if ($bad) {
     Write-Note '节点导入报错，以下是关键几行：'
     $out | Select-Object -Last 20 | ForEach-Object { Write-Detail $_ }

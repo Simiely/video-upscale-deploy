@@ -104,7 +104,24 @@ if ($VideoBackend -eq 'ffmpeg') {
   $FfmpegExe = Enable-FfmpegOnPath -NeedX265:$TenBit
   if (-not $FfmpegExe) {
     $why = if ($TenBit) { '带 libx265 的完整版 ffmpeg（--10bit 要用 x265）' } else { '支持 rawvideo 的完整版 ffmpeg' }
-    throw "找不到$why。`n  可选做法：`n    1) 装一个完整版：winget install Gyan.FFmpeg（装完重开终端）`n    2) 或设环境变量 FFMPEG_PATH 指向 ffmpeg.exe`n    3) 或把 ffmpeg.exe 放到 C:\AI\ffmpeg\bin\`n    4) 实在没有就加 -VideoBackend opencv（输出是老编码 MPEG-4，体积大，不推荐）"
+    throw "找不到$why。`n  可选做法：`n    1) 装一个完整版：winget install Gyan.FFmpeg（装完重开终端）`n    2) 或设环境变量 FFMPEG_PATH 指向 ffmpeg.exe`n    3) 或把 ffmpeg.exe 放到 $UPSCALE_ROOT\ffmpeg\bin\`n    4) 实在没有就加 -VideoBackend opencv（输出是老编码 MPEG-4，体积大，不推荐）"
+  }
+
+  # 注入之后必须用「真实子进程」复核一次，不能只看 Enable-FfmpegOnPath 的返回值。
+  # 原因：CLI 是在 python 子进程里用 shutil.which('ffmpeg') 查的，而某些宿主（AI agent 的
+  # 执行环境）会用固定快照重写子进程环境 —— 运行时改 $env:PATH 传不到子进程。
+  # 那种情况下日志会打印出正确的 ffmpeg 路径、CLI 却报 requires ffmpeg in PATH，
+  # 排查一次要花很久，所以在开跑前就拦住，并给出确定的解法。
+  if (Test-Path $COMFY_PY) {
+    $probe = & $COMFY_PY -c "import shutil;print(shutil.which('ffmpeg') or '')" 2>$null
+    if (-not ("$probe".Trim())) {
+      $msg = "探测到 ffmpeg（$FfmpegExe），但子进程 PATH 里拿不到它，SeedVR2 的 CLI 必然失败。`n" +
+             "  原因：宿主进程改写了子进程环境，运行时注入 `$env:PATH 不生效。`n" +
+             "  解决：把完整版 ffmpeg.exe + ffprobe.exe 放到 $UPSCALE_ROOT\ffmpeg\bin\，`n" +
+             "        并把该目录写进【用户级】PATH（注册表级；改完必须开新终端）。`n" +
+             "  应急：加 -VideoBackend opencv —— 输出 MPEG-4 Part 2，同画质体积大得多，不推荐。"
+      throw $msg
+    }
   }
 }
 

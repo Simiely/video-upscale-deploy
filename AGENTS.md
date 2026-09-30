@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-28 v1.6.0 图形界面通路补齐（`workflows/` 目录 + 启动脚本输出目录可配）
+> 📌 **文档基线**：2026-09-30 v1.7.0 SeedVR2 编码器路径定位与处置（ffmpeg 固定落点 + 子进程 PATH 复核 + 补推 3 处既有修复）(commit `待回填`)
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
@@ -36,7 +36,8 @@
 - **12G 卡跑 FlashVSR 必须开分块**：`tiled_dit` / `tiled_vae` 关掉任意一个都会 OOM（实测节点申请 19.02 GiB，而 12G 卡上限 11.99 GiB）。这两个开关只对 24G 卡有意义。
 - **FlashVSR 权重目录布局是写死的**：节点 `nodes.py` 用 `model_path = models_dir / model`，所以必须落在 `models\FlashVSR-v1.1`，不能套一层 `models\FlashVSR\FlashVSR-v1.1`。
 - **hf-mirror 拉大文件要关 xet**：设 `HF_HUB_DISABLE_XET=1` 并降为单线程续传，否则 5 GB 级文件会反复中断，还会留下巨型 `.incomplete` 残留。
-- **SeedVR2 的 ffmpeg 必须「既完整、又在 PATH 上」**：`inference_cli.py` 里写死了裸命令——校验用 `shutil.which("ffmpeg")`，编码用 `subprocess.Popen(['ffmpeg', ...])`，**只认 PATH**。所以光探测出完整版路径没用，必须把它的目录插到子进程 PATH 最前（`common.ps1` 的 `Enable-FfmpegOnPath`，批量脚本启动时已自动调用）。PATH 上很容易踩到精简构建（如 TRAE 自带的 `--disable-everything` 版本，无 rawvideo、无 libx265），表现为 `Unknown input format: 'rawvideo'` 直接崩。
+- **SeedVR2 的 ffmpeg 只认 PATH，而且「注入进去」不一定到得了子进程**：`inference_cli.py` 写死了裸命令（校验 `shutil.which("ffmpeg")`、编码 `subprocess.Popen(['ffmpeg', ...])`），`add_argument` 全表**没有** `--ffmpeg_path` 这类参数，**PATH 是唯一杠杆**。`common.ps1` 的 `Enable-FfmpegOnPath` 把完整版目录插到当前进程 PATH 最前，**普通终端里有效**；但**某些宿主（AI agent 的执行环境）创建子进程时会用固定快照重写环境**，注入的目录到不了子进程——表现为日志打印了正确路径、CLI 仍报 `--video_backend ffmpeg requires ffmpeg in PATH`。**处置：把 ffmpeg 放到候选① `<UPSCALE_ROOT>\ffmpeg\bin\` 并写进注册表级【用户级】PATH（改完开新终端）**；`03-SeedVR2\批量放大.ps1` 开跑前会用真实子进程复核一次，拿不到就直接报错，不等到 CLI 崩。
+- **别再把 TRAE 自带的 ffmpeg 当成精简构建**：实测 `%APPDATA%\TRAE SOLO CN\...\app\ffmpeg\ffmpeg.exe` 是 **gyan.dev 8.1-full**（rawvideo / libx264 / libx265 齐全，同目录含 `ffprobe.exe`）。早期 `common.ps1` 注释与手册说它是 `--disable-everything` 版本，属**过时误判**，2026-09-30 已更正（详见手册常见问题第 8 条、修订记录第 29 条）。
 - **别用 `Test-Cmd 'ffmpeg'` 判断 ffmpeg 可用**：精简构建也在 PATH 上，会被误判为可用。统一用 `Resolve-FfmpegTool`（按 `-demuxers` 找 rawvideo、按 `-encoders` 找 libx265 做能力探测）。
 - **SeedVR2 的 CLI 完全不处理音频**：`inference_cli.py` 的 `add_argument` 全表里没有任何音频项，输出天然无音轨。单文件与目录两种模式都由 `批量放大.ps1` 收尾时调 `Restore-AudioTrack` 用 ffmpeg 流拷贝接回（`-c:v copy -c:a copy`）。
 - **校验输出要看编码，不能只看「跑完了」**：SeedVR2 在 ffmpeg 后端不可用时会**静默退回 opencv**，写成 MPEG-4 Part 2（`codec_name=mpeg4`，同画质体积大得多）。用 ffprobe 核对 `codec_name` 应为 `h264`、帧数与源一致、有 `aac` 音轨。

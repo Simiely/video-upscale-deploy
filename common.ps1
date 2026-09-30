@@ -3,7 +3,10 @@
   用法：在其它脚本中通过  . "$PSScriptRoot\..\common.ps1"  引入
 #>
 
-$ErrorActionPreference = 'Stop'
+# 注意：python/git/curl 等原生命令把普通日志写到 stderr 是常态，
+# Stop 会把这些日志当成终止性错误（实测会让 ComfyUI 节点自检、SeedVR2 CLI 自检误判失败）。
+# 脚本里真正的失败都用显式 throw 或 $LASTEXITCODE 判定，不依赖 Stop。
+$ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 
 # ================= 可按需修改的路径 =================
@@ -20,11 +23,24 @@ $Global:HF_ENDPOINT = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { 'https:/
 $Global:COMFY_URL = 'http://127.0.0.1:8188'
 
 # 完整版 ffmpeg 的候选路径（支持通配符）。
-# PATH 上的 ffmpeg 不一定是完整版：本机实测 TRAE 自带的
-# `...\TRAE SOLO CN\resources\app\bin\ffmpeg.exe` 是 `--disable-everything` 的精简构建，
-# 连 rawvideo 输入格式都没有，SeedVR2 走 ffmpeg 编码后端会直接崩
-# （`Unknown input format: 'rawvideo'` → BrokenPipeError），也没有 libx265。
-# 所以脚本会按「FFMPEG_PATH 环境变量 → PATH → 下面这些候选」的顺序找能用的那个。
+# 候选① 是**推荐落点**：把完整版 ffmpeg.exe + ffprobe.exe 放到 <UPSCALE_ROOT>\ffmpeg\bin\，
+# 解析就变成确定的，不再取决于是不是恰好有别的软件往 PATH 里塞了一个。
+#
+# 【2026-09-30 更正】早期这里写「TRAE 自带的 ffmpeg 是 --disable-everything 精简构建」——
+# 那是**过时且错误**的判断。实测 %APPDATA%\TRAE SOLO CN\...\app\ffmpeg\ffmpeg.exe 是
+# gyan.dev 8.1-full 构建，rawvideo / libx264 / libx265 齐全，同目录还有 ffprobe.exe。
+#
+# 真正会让 SeedVR2 失败的**不是** ffmpeg 不完整，而是两件事叠加：
+#   ① inference_cli.py 写死了裸命令 ffmpeg（校验 shutil.which，编码 subprocess.Popen），
+#      没有 --ffmpeg_path 之类的参数，**只认 PATH**；
+#   ② 某些宿主（AI agent 的执行环境）在创建子进程时用**固定快照重写环境**，
+#      于是运行时改 $env:PATH —— 也就是 Enable-FfmpegOnPath 干的事 —— **传不到子进程**。
+# 表现：脚本日志打印了正确的 ffmpeg 路径，CLI 仍报
+# `--video_backend ffmpeg requires ffmpeg in PATH`。
+# 处置：把 ffmpeg 放到候选①，并把该目录写进**用户级** PATH（注册表级，改完开新终端）。
+#       运行在普通终端里时，Enable-FfmpegOnPath 的注入本来是有效的，两种机制互为兜底。
+#
+# 脚本按「FFMPEG_PATH 环境变量 → PATH → 下面这些候选」的顺序找能用的那个。
 # 换机器请改这里，或用环境变量 FFMPEG_PATH 直接指定。
 $Global:FFMPEG_CANDIDATES = @(
   (Join-Path $UPSCALE_ROOT 'ffmpeg\bin\ffmpeg.exe'),

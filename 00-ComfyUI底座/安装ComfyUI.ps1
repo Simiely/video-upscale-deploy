@@ -61,8 +61,12 @@ $indexes = @(
 )
 $torchOk = $false
 foreach ($idx in $indexes) {
-  Write-Detail "尝试 $($idx.Name) ..."
-  & $COMFY_PY -m pip install torch torchvision torchaudio --index-url $idx.Url
+  # 镜像开关：仅当设置了 PIP_TORCH_INDEX_CU130 时，把 CUDA 13.0 档的索引换成国内镜像；
+  # 未设置时行为与原来完全一致（仍走 download.pytorch.org）。
+  $idxUrl = $idx.Url
+  if ($idx.Name -eq 'CUDA 13.0' -and $env:PIP_TORCH_INDEX_CU130) { $idxUrl = $env:PIP_TORCH_INDEX_CU130 }
+  Write-Detail "尝试 $($idx.Name) ...（索引 $idxUrl）"
+  & $COMFY_PY -m pip install torch torchvision torchaudio --index-url $idxUrl
   if ($LASTEXITCODE -ne 0) { Write-Note "$($idx.Name) 安装失败，换下一个"; continue }
 
   & $COMFY_PY -c "import torch,sys;print('torch',torch.__version__,'| cuda',torch.version.cuda,'| 可用',torch.cuda.is_available());sys.exit(0 if torch.cuda.is_available() else 1)"
