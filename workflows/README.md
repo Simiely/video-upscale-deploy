@@ -21,13 +21,61 @@ powershell -ExecutionPolicy Bypass -File .\00-ComfyUI底座\启动ComfyUI.ps1
 
 ## 清单
 
-| 文件 | 对应方案 | 档位 | 适用素材 |
-|---|---|---|---|
-| [FlashVSR/FlashVSR-12G-有声素材.json](FlashVSR/FlashVSR-12G-有声素材.json) | 方案二 | `tiny-long` / 2× | **有音轨**的素材，产物带原声 |
-| [FlashVSR/FlashVSR-12G-无音轨素材.json](FlashVSR/FlashVSR-12G-无音轨素材.json) | 方案二 | `tiny-long` / 2× | **无音轨**的素材（断开了音频连线）|
-| [SeedVR2/SeedVR2-12G-1080p.json](SeedVR2/SeedVR2-12G-1080p.json) | 方案三 | 3B FP8 / 短边 1080 | 关键镜头、成片交付 |
+> **命名规则**：`<引擎>-<效果>-<档位>.json` —— 文件名直接说明用哪个模型、出什么效果。
+> 全部按 **RTX 4070 SUPER 12G** 调好参数。16G / 24G 卡要改见下面「档位换算」。
 
-三个文件都按 **RTX 4070 SUPER 12G** 调好参数。16G / 24G 卡要改见下面「档位换算」。
+### FlashVSR · 倍率型放大（输出 = 输入 × scale）
+
+| 文件 | 档位 | 适用素材 |
+|---|---|---|
+| [FlashVSR/FlashVSR-放大2x-有声素材.json](FlashVSR/FlashVSR-放大2x-有声素材.json) | `tiny-long` / 2× / `tiled_vae` 开 | **有音轨**的素材，产物带原声 |
+| [FlashVSR/FlashVSR-放大2x-无音轨素材.json](FlashVSR/FlashVSR-放大2x-无音轨素材.json) | `tiny-long` / 2× / `tiled_vae` 开 | **无音轨**的素材（断开了音频连线）|
+| [FlashVSR/FlashVSR-长视频2x-自动分段.json](FlashVSR/FlashVSR-长视频2x-自动分段.json) | 单节点 `WBLongVideoUpscale`，cap 141 帧自动分段 + ffmpeg 无损拼接 | **长视频**（几十分钟级）；整段进内存会崩，这个按段跑 |
+
+### SeedVR2 · 目标分辨率型放大（指定短边像素，自动保持宽高比）
+
+| 文件 | 档位差异 | 适用 |
+|---|---|---|
+| [SeedVR2/SeedVR2-放大1080p-标准.json](SeedVR2/SeedVR2-放大1080p-标准.json) | 3B FP8 / `blocks_to_swap` 24 / batch 21 / `swap_io_components` 开 | 常规档，统一出 1080p |
+| [SeedVR2/SeedVR2-放大1080p-省显存.json](SeedVR2/SeedVR2-放大1080p-省显存.json) | `blocks_to_swap` 16 + **DiT 缓存开** / batch 5 / **关 VAE 分块解码** | **12G 最稳的档**，标准档跑不动时 |
+| [SeedVR2/SeedVR2-放大1080p-快速预览.json](SeedVR2/SeedVR2-放大1080p-快速预览.json) | batch 9 / tile overlap 64 | 出活快，先看效果再决定 |
+| [SeedVR2/SeedVR2-放大1080p-画质修复.json](SeedVR2/SeedVR2-放大1080p-画质修复.json) | `max_resolution` 1920 + overlap 1 + `enable_debug` 开 + TorchCompile 节点 | 低画质源修复向 |
+| [SeedVR2/SeedVR2-放大2160p-4K极致.json](SeedVR2/SeedVR2-放大2160p-4K极致.json) | 短边 **2160（4K）**，其余同标准档 | 冲 4K；显存占用高、最慢 |
+| [SeedVR2/SeedVR2-放大HD-官方示例.json](SeedVR2/SeedVR2-放大HD-官方示例.json) | 插件官方示例（3B **FP16** / bts 32 / 官方 7 节点写法）| 参考 / 基线 |
+
+### MiniMax H3 · 生成型（不是放大，是「造」视频）
+
+| 文件 | 效果 | 输入 | 适用 |
+|---|---|---|---|
+| [MiniMax/MiniMax-H3-文生视频T2V.json](MiniMax/MiniMax-H3-文生视频T2V.json) | 提示词 → 视频 | 纯文本 | 没素材，直接生成 |
+| [MiniMax/MiniMax-H3-图生视频I2V.json](MiniMax/MiniMax-H3-图生视频I2V.json) | 首帧图 → 视频 | 1 张图 | 有参考首帧（启动器会自动从所选视频抽首帧）|
+
+> **两份是同一张图的两种模式**：I2V 比 T2V 多一个 `LoadImage` 节点接进子图实例的
+> `first_frame`（不接 = 文生视频，接上 = 图生视频，内部 `ComfySwitchNode` 自动切）。
+>
+> 启动器里这 11 份都可「推送执行」；「加载到画布」用的是 ComfyUI 画布原件
+> （`C:\AI\ComfyUI\user\default\workflows\` 下同名同档的 UI 格式图）。
+
+### 命名对照（2026-10-14 改名）
+
+| 旧名 | 新名 |
+|---|---|
+| `FlashVSR/FlashVSR-12G-有声素材.json` | `FlashVSR/FlashVSR-放大2x-有声素材.json` |
+| `FlashVSR/FlashVSR-12G-无音轨素材.json` | `FlashVSR/FlashVSR-放大2x-无音轨素材.json` |
+| `SeedVR2/SeedVR2-12G-1080p.json` | `SeedVR2/SeedVR2-放大1080p-标准.json` |
+| `SeedVR2/SeedVR2-极致-2160.json` | `SeedVR2/SeedVR2-放大2160p-4K极致.json` |
+| `MiniMax/MiniMax-H3-T2V.json` | `MiniMax/MiniMax-H3-文生视频T2V.json` |
+| `MiniMax/MiniMax-H3-I2V.json` | `MiniMax/MiniMax-H3-图生视频I2V.json` |
+| `API导出/WB长视频放大.json` | `FlashVSR/FlashVSR-长视频2x-自动分段.json` |
+| `API导出/seedvr2_12G_平衡版.json` | `SeedVR2/SeedVR2-放大1080p-省显存.json` |
+| `API导出/seedvr2_fast_res1024_batch9.json` | `SeedVR2/SeedVR2-放大1080p-快速预览.json` |
+| `API导出/seedvr2_修复版_1080p.json` | `SeedVR2/SeedVR2-放大1080p-画质修复.json` |
+| `API导出/SeedVR2-HD视频放大-示例.json` | `SeedVR2/SeedVR2-放大HD-官方示例.json` |
+
+原来那个 `API导出/` 目录已撤销：里面能用的档位都并进上面三个分类目录，
+**3 份 FlashVSR 是 `ui_to_api` 转换器的残次品**（`VHS_VideoCombine` 缺必填输入
+`images`，直接 POST /prompt 会被拒），另有 2 份与 1080p 标准档重叠 —— 这 5 份
+移到本地 `workflows/_弃用-工作流/`（已 gitignore），理由与依据见该目录的说明。
 
 ---
 
@@ -56,8 +104,8 @@ function getDataFromJSON(e){
 
 | 你的素材 | 用哪个 | 产物 |
 |---|---|---|
-| 有 audio 流 | `FlashVSR-12G-有声素材.json` | 画面 + 原音轨 |
-| 没有 audio 流 | `FlashVSR-12G-无音轨素材.json` | 只有画面（源本来就没声音，无损失）|
+| 有 audio 流 | `FlashVSR-放大2x-有声素材.json` | 画面 + 原音轨 |
+| 没有 audio 流 | `FlashVSR-放大2x-无音轨素材.json` | 只有画面（源本来就没声音，无损失）|
 
 **选错的症状**：任务在**第一个节点**就 error，信息形如
 

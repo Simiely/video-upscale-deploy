@@ -1,0 +1,20 @@
+{
+  "1": {
+    "class_type": "WBLongVideoUpscale",
+    "inputs": {
+      "video": "E:\\VideoUpscale\\input\\test_720p_2s.mp4",
+      "cap": 141,
+      "max_segments": 0,
+      "head": 0,
+      "tail": 0,
+      "scale": 2,
+      "mode": "tiny-long",
+      "tiled_vae": true,
+      "tiled_dit": true,
+      "seed": 123456789
+    },
+    "_meta": {
+      "title": "长视频放大（自动分段 + 自动合并）"
+    }
+  }
+}

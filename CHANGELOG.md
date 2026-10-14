@@ -4,6 +4,54 @@
 
 ---
 
+## v1.8.0 · 2026-10-14
+
+工作流统一改名 + 目录收敛，并把转换器残次品清出去。**不改任何一套方案的跑法**，
+只动文件名与索引；改名前整目录已备份。
+
+### 命名规则：`<引擎>-<效果>-<档位>.json`
+
+原来是三套命名混用（`FlashVSR-12G-*`、`seedvr2_upscale_*`、`FlashVSR放大工作流-*`），
+看文件名读不出「哪个模型、什么效果」。现在统一成
+**引擎 + 效果（放大倍率 / 目标分辨率 / 生成方式）+ 档位**：
+
+- FlashVSR 是**倍率型**（输出 = 输入 × scale）：`FlashVSR-放大2x-有声素材.json`
+- SeedVR2 是**目标分辨率型**（指定短边像素）：`SeedVR2-放大1080p-省显存.json`
+- MiniMax H3 是**生成型**（不是放大）：`MiniMax-H3-文生视频T2V.json`
+
+### 目录收敛：撤销 `API导出/`，11 份并成 3 个分类目录
+
+`workflows/API导出/` 是画布原件的 API 格式镜像，**全仓零代码引用**（启动器只引用
+`workflows/FlashVSR|SeedVR2|MiniMax`），且与已推送的图重复。本版把它拆散归位：
+
+| 原位置 | 新位置 |
+|---|---|
+| `API导出/WB长视频放大.json` | `FlashVSR/FlashVSR-长视频2x-自动分段.json` |
+| `API导出/seedvr2_12G_平衡版.json` | `SeedVR2/SeedVR2-放大1080p-省显存.json` |
+| `API导出/seedvr2_fast_res1024_batch9.json` | `SeedVR2/SeedVR2-放大1080p-快速预览.json` |
+| `API导出/seedvr2_修复版_1080p.json` | `SeedVR2/SeedVR2-放大1080p-画质修复.json` |
+| `API导出/SeedVR2-HD视频放大-示例.json` | `SeedVR2/SeedVR2-放大HD-官方示例.json` |
+
+### 清出 5 份残次品 / 重叠档（移到本地 `workflows/_弃用-工作流/`，已 gitignore）
+
+- **转换器残次品 3 份**（`FlashVSR放大工作流-12G-` 的 提速版 / 无音轨素材 / 画质优先）：
+  `VHS_VideoCombine` 缺**必填**输入 `images`
+  （依据 `ComfyUI-VideoHelperSuite/videohelpersuite/nodes.py:245` 的 `INPUT_TYPES()`）。
+  画布原件本来有连线（`images link=7`、`frame_rate link=8`、`video_info link=5`），
+  是 `ui_to_api` 把连线丢了、`frame_rate` 还被写成字面量 `8`（疑把 link id 当值）。
+  直接 `POST /prompt` 会被 `validate_prompt` 拒：`Required input is missing: images`。
+- **与 1080p 标准档重叠 2 份**（`seedvr2_upscale_1080p` / `_fixed`）：同一张图，
+  只差 `batch_size`（33 vs 21）与 `swap_io_components`（false vs true）/ `offload_device`（none vs cpu）。
+
+### 顺带
+
+- `FlashVSR-长视频2x-自动分段.json` 里写死的输入路径由本机私有目录
+  （`D:\261004\demo\...`）改为仓库约定路径 `E:\VideoUpscale\input\test_720p_2s.mp4`。
+- 上游联动：ComfyUI 画布原件（`user/default/workflows/`）同步改成同名，
+  启动器 `video-launcher` v1.2.18 的路径引用与 `WF_UI_SOURCES` 一并更新。
+
+---
+
 ## v1.7.0 · 2026-09-30
 
 把 SeedVR2「编码器路径」这个遗留问题一次定位到底，补齐 ffmpeg 的**固定落点**与**开跑前自检**，

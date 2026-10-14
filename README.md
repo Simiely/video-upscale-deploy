@@ -106,9 +106,10 @@ video-upscale-deploy/
 ├── docs/
 │   └── 使用指南.md          # 完整部署手册（含逐条修订记录）
 ├── workflows/              # 图形界面工作流（拖进 ComfyUI 网页即用）
-│   ├── README.md           #   索引、用法、参数速查、实测性能
-│   ├── FlashVSR/           #   方案二：有声素材版 / 无音轨素材版
-│   └── SeedVR2/            #   方案三：12G 档位
+│   ├── README.md           #   索引（命名规则、每份的模型/效果/档位）、用法、参数速查
+│   ├── FlashVSR/           #   FlashVSR 倍率型放大：2× 有声 / 2× 无音轨 / 长视频自动分段
+│   ├── SeedVR2/            #   SeedVR2 目标分辨率型：1080p 五档 + 4K 极致 + 官方示例（共 6）
+│   └── MiniMax/            #   MiniMax H3 生成型：文生视频 T2V / 图生视频 I2V
 ├── common.ps1              # 三套方案共用的配置与工具函数
 ├── 检查环境.ps1             # 环境体检（只读）
 ├── 00-ComfyUI底座/
