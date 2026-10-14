@@ -117,6 +117,10 @@ E:\VideoUpscale\    <- 素材与成品（改 UPSCALE_IO 可换）
   output\           <- 成品出这里
 ```
 
+> **ComfyUI 的输出根也跟着走**：所有拉起 ComfyUI 的入口都会带上 `--output-directory <UPSCALE_IO>\output`，
+> 所以无论用启动器、`启动ComfyUI.ps1`，还是批量脚本自动拉起服务，**工作流产物都落在这一个地方**，
+> 不会再跑到 `ComfyUI\output` 去。（改过 `UPSCALE_IO` 之后若服务已在运行，要重启它才生效——ComfyUI 只在启动时读这个参数。）
+
 ---
 
 ## 目录结构

@@ -61,10 +61,23 @@ class 服务面板:
         self._svc_starting = True
         self.btn_primary.set_state("disabled")
         self.log("[服务] 正在启动 ComfyUI（首次加载约 15~60 秒）…", "hi")
+        out_dir = CONFIG["output_dir"]
+        if out_dir:
+            try:
+                os.makedirs(out_dir, exist_ok=True)   # ComfyUI 只会用不会建，目录缺了写不进去
+            except OSError as e:
+                self.log("[服务] 输出目录建不出来（%s），这次改用 ComfyUI 默认：%r" % (out_dir, e), "warn")
+                out_dir = ""
+        cmd = [CONFIG["comfy_py"], "-u", "main.py",
+               "--disable-pinned-memory", "--disable-async-offload", "--reserve-vram", "1"]
+        if out_dir:
+            # 必须显式传（v1.2.20 修）：工作流里 SaveVideo / VHS_VideoCombine 的 filename_prefix
+            # 是**相对路径**，基准就是这个输出根；不传则用 ComfyUI 自带的 <comfy_dir>\output，
+            # 成品就不在界面显示的那个目录里 —— 用户报的"又输出到其他目录"就是这个。
+            cmd += ["--output-directory", out_dir]
         try:
             self.svc_proc = subprocess.Popen(
-                [CONFIG["comfy_py"], "-u", "main.py",
-                 "--disable-pinned-memory", "--disable-async-offload", "--reserve-vram", "1"],
+                cmd,
                 cwd=CONFIG["comfy_dir"], env=self._comfy_env(),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1,

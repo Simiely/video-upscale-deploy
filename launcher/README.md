@@ -64,7 +64,7 @@
 | `deploy_root` | **自动定位**（兜底 `C:\AI\video-upscale-deploy`） | 部署包根目录；程序在 `<根>/launcher/` 下时自动认上一级，见「覆盖默认路径」 |
 | `ffmpeg_dir` | `C:\AI\ffmpeg\bin` | 显式前置到子进程 PATH，不依赖注册表 |
 | `input_dir` | `E:\VideoUpscale\input` | 素材目录 |
-| `output_dir` | `E:\VideoUpscale\output` | 成品目录 |
+| `output_dir` | `E:\VideoUpscale\output` | 成品目录。**启动服务时会作为 `--output-directory` 传给 ComfyUI**（v1.2.20 起），所以工作流产物也落这儿 |
 | `comfy_url` | `http://127.0.0.1:8188` | ComfyUI 服务地址 |
 | `log_dir` | `<程序目录>\logs` | 日志落盘目录（见「关于运行日志」） |
 | `log_to_file` | 未设置（= 关闭） | 置 `true` 后把日志区内容同时写入 `log_dir` |

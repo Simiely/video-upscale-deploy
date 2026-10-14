@@ -53,7 +53,10 @@ if (-not (Test-Path (Join-Path $COMFY_MODEL "$Model"))) {
 if (-not $OutDir) { $OutDir = $OUTPUT_DIR }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 
-$comfyOutDir = Join-Path $COMFY_DIR 'output\upscaled'
+# ComfyUI 的输出根由启动参数 --output-directory 决定（启动器与 启动ComfyUI.ps1 都传 $OUTPUT_DIR）。
+# 这里必须跟着 $OUTPUT_DIR 走：写死 $COMFY_DIR\output 的话，一旦输出根被指到别处，
+# 下面按差集取产物就会一个都找不到（v1.9.1 修）。
+$comfyOutDir = Join-Path $OUTPUT_DIR 'upscaled'
 if (-not (Test-Path $comfyOutDir)) { New-Item -ItemType Directory -Path $comfyOutDir -Force | Out-Null }
 
 # ---------- 2. 确保 ComfyUI 在跑 ----------
@@ -63,8 +66,11 @@ if (Test-ComfyApi) {
 } elseif ($AutoStart) {
   Write-Detail "服务未启动，正在后台拉起 ComfyUI ..."
   $log = Join-Path $COMFY_DIR 'comfy-api.log'
+  # 自己拉起服务时也要显式指定输出根，否则和「启动器 / 启动ComfyUI.ps1 起的」不是同一个落点，
+  # $comfyOutDir 就会指到空目录，跑完报"没找到输出文件"（v1.9.1 修）。
   Start-Process -FilePath $COMFY_PY `
-                -ArgumentList @((Join-Path $COMFY_DIR 'main.py'), '--port', '8188', '--listen', '127.0.0.1') `
+                -ArgumentList @((Join-Path $COMFY_DIR 'main.py'), '--port', '8188', '--listen', '127.0.0.1',
+                                '--output-directory', $OUTPUT_DIR) `
                 -WorkingDirectory $COMFY_DIR -WindowStyle Hidden `
                 -RedirectStandardOutput $log -RedirectStandardError "$log.err"
   if (-not (Wait-ComfyApi -TimeoutSec 300)) { throw "ComfyUI 启动超时，看看 $log.err" }

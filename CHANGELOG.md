@@ -4,6 +4,33 @@
 
 ---
 
+## v1.9.1 · 2026-10-14
+
+**修：ComfyUI 输出根统一到 `$OUTPUT_DIR`，FlashVSR 批量脚本不再写死 `$COMFY_DIR\output`。**
+
+背景：ComfyUI 的输出根由启动参数 `--output-directory` 决定，而工作流里的输出节点用的是
+**相对** `filename_prefix`，所以输出根一变、产物落点跟着变。
+
+### 变更
+- `02-FlashVSR/批量放大.ps1`：`$comfyOutDir` 由 `Join-Path $COMFY_DIR 'output\upscaled'`
+  改为 `Join-Path $OUTPUT_DIR 'upscaled'`。旧写法在"输出根被指到别处"的机器上，
+  会让下面按差集取产物**一个都找不到**，表现为「跑完了但没找到输出文件」。
+- 同文件 `-AutoStart` 分支拉起 ComfyUI 时补 `--output-directory $OUTPUT_DIR`，
+  否则它起的服务与「启动器 / 启动ComfyUI.ps1 起的」不是同一个落点。
+- 配套的启动器侧改动见 `launcher/CHANGELOG.md` 的 v1.2.20。
+
+### 现在三处一致
+
+| 谁启动 ComfyUI | 输出根 |
+|---|---|
+| `00-ComfyUI底座/启动ComfyUI.ps1` | `$OUTPUT_DIR`（原本就传） |
+| 启动器 `launcher/` | `CONFIG["output_dir"]` ← v1.2.20 补上 |
+| `02-FlashVSR/批量放大.ps1 -AutoStart` | `$OUTPUT_DIR` ← v1.9.1 补上 |
+
+`01-Video2X`（Vulkan）与 `03-SeedVR2`（自带 CLI）不经过 ComfyUI，不受影响。
+
+---
+
 ## v1.9.0 · 2026-10-14
 
 **两个仓库合并：`video-launcher` 整体并入本仓库的 `launcher/`，旧仓库归档只读。**

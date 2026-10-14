@@ -2,6 +2,34 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.2.20 · 2026-10-14
+
+**修：工作流的成品会落到 ComfyUI 自带的 `output\`，而不是界面显示的「输出目录」。**
+
+### 根因（查证自 ComfyUI 源码 + 本机磁盘实证）
+工作流里 `SaveVideo` / `VHS_VideoCombine` 的 `filename_prefix` 是**相对路径**
+（`video/seedvr2`、`upscaled/flashvsr`），落点基准是 **ComfyUI 进程的输出根**；
+而输出根由启动参数决定 —— ComfyUI 只在 `if args.output_directory:` 为真时才切换
+（`comfy/cli_args.py:72` 定义、`main.py:159` 生效），不传就用 `folder_paths.py:69`
+的默认 `<comfy_dir>\output`。本程序拉起 ComfyUI 时**漏传了这个参数**，
+于是成品跑到了 `C:\AI\ComfyUI\output`（实测 19 个文件），
+而界面一直显示 `E:\VideoUpscale\output`（实测 0 个文件）。
+
+> 批量放大那条路没暴露该问题：`02-FlashVSR/批量放大.ps1` 跑完会按差集把产物
+> `Move-Item` 到 `$OUTPUT_DIR`，所以"看起来是对的"。只有画布手动跑没有搬运环节。
+
+### 变更
+- `服务面板.py` 启动 ComfyUI 的命令补上 `--output-directory CONFIG["output_dir"]`：
+  传参前 `os.makedirs(exist_ok=True)`（ComfyUI 只会用不会建）；目录建不出来时**降级为不传**
+  并记一条 `warn`，不让服务起不来。
+- `APP_VER` → v1.2.20。
+
+### 注意
+- **必须重启 ComfyUI 服务才生效** —— 程序检测到服务已在运行就不会重启它。
+- 之前落在 `C:\AI\ComfyUI\output` 的历史文件不会自己搬家；ComfyUI 前端「历史」里的
+  旧任务预览可能因输出根已改而找不到（文件本身还在磁盘上）。
+- 配套的部署脚本侧改动见根仓库 CHANGELOG 的 v1.9.1。
+
 ## v1.2.19 · 2026-10-14
 
 **本仓库并入部署仓库 `video-upscale-deploy` 的 `launcher/` 子目录，并让 `deploy_root` 自动定位。**

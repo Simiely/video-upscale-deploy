@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-10-14 **v1.2.19**（commit hash `25b2005`）（仓库合并进 `video-upscale-deploy/launcher/` + `deploy_root` 自动定位 `_autodetect_deploy_root`）· 2026-10-14 **v1.2.18**（commit hash `d5b21ad`）（同步部署仓库 v1.8.0 的工作流改名：`WORKFLOWS` 六条路径 + `WF_UI_SOURCES` 画布原件映射 + `cleanup_synced_api` 新旧名并集；只跟随改名，不改行为）· 2026-10-12 **v1.2.17**（桥接扩展一键载入画布：装 `video-launcher-bridge` + 「加载到画布」按钮 + I2V 画布构造；v1.2.16 的 API 格式同步确认画布打不开、已移除并清理）· 2026-10-10 **v1.2.15**（commit hash 见 docs 提交）**六套内置方案全部可直推：MiniMax 子图离线展开成 API 图（T2V/I2V）+ I2V 首帧自动抽取（`extract_first_frame`/`apply_input_image`）+ SeedVR2 两套补绑（「极致 原画」改「极致 2160」——SeedVR2 没有"保持原画"参数）** + ComfyUI 工作流全量并入（启动扫工作流目录）+ UI→API 转换器（本地图从"能选不能推"变"可直推"）+ 工作流备注名（`wf_alias` 落盘）+ 主文件拆出 `服务面板.py` mixin（974→899 逻辑行）（v1.2.14）+ 外部拉起的 ComfyUI 也能停 / 重启（按命令行找进程：`find_comfy_pids` + `taskkill /T /F`；cwd 启动的只列不杀）（v1.2.13）+ 布局收敛：服务卡回中栏顶部 + 工作流下拉改弹出浮层（布局不再被撑动）+ 服务卡四按钮一行等大（统一 minwidth）+ 上排高度 = max(右栏工作流卡+冗余, 中栏兜底)（v1.2.12）+ 内置方案绑定真实 API 图可直推 + 加载图进下拉 + 停止队列任务（v1.2.11）+ 设置项可打开可手改（v1.2.10）+ 启动自检（v1.2.9）+ 日志落盘（v1.2.8）+ ComfyUI 日志保真（v1.2.6）
+> 📌 **文档基线**：2026-10-14 **v1.2.20**（ComfyUI 输出根：启动服务补传 `--output-directory CONFIG["output_dir"]`，修「工作流成品落到 `<comfy_dir>\output` 而不是界面显示的目录」）· 2026-10-14 **v1.2.19**（commit hash `25b2005`）（仓库合并进 `video-upscale-deploy/launcher/` + `deploy_root` 自动定位 `_autodetect_deploy_root`）· 2026-10-14 **v1.2.18**（commit hash `d5b21ad`）（同步部署仓库 v1.8.0 的工作流改名：`WORKFLOWS` 六条路径 + `WF_UI_SOURCES` 画布原件映射 + `cleanup_synced_api` 新旧名并集；只跟随改名，不改行为）· 2026-10-12 **v1.2.17**（桥接扩展一键载入画布：装 `video-launcher-bridge` + 「加载到画布」按钮 + I2V 画布构造；v1.2.16 的 API 格式同步确认画布打不开、已移除并清理）· 2026-10-10 **v1.2.15**（commit hash 见 docs 提交）**六套内置方案全部可直推：MiniMax 子图离线展开成 API 图（T2V/I2V）+ I2V 首帧自动抽取（`extract_first_frame`/`apply_input_image`）+ SeedVR2 两套补绑（「极致 原画」改「极致 2160」——SeedVR2 没有"保持原画"参数）** + ComfyUI 工作流全量并入（启动扫工作流目录）+ UI→API 转换器（本地图从"能选不能推"变"可直推"）+ 工作流备注名（`wf_alias` 落盘）+ 主文件拆出 `服务面板.py` mixin（974→899 逻辑行）（v1.2.14）+ 外部拉起的 ComfyUI 也能停 / 重启（按命令行找进程：`find_comfy_pids` + `taskkill /T /F`；cwd 启动的只列不杀）（v1.2.13）+ 布局收敛：服务卡回中栏顶部 + 工作流下拉改弹出浮层（布局不再被撑动）+ 服务卡四按钮一行等大（统一 minwidth）+ 上排高度 = max(右栏工作流卡+冗余, 中栏兜底)（v1.2.12）+ 内置方案绑定真实 API 图可直推 + 加载图进下拉 + 停止队列任务（v1.2.11）+ 设置项可打开可手改（v1.2.10）+ 启动自检（v1.2.9）+ 日志落盘（v1.2.8）+ ComfyUI 日志保真（v1.2.6）
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 ## 技术栈
@@ -64,6 +64,7 @@
   ```
   ⚠️ 之前能打出好 exe，是因为 PyInstaller 把 Tcl/Tk 探测结果**缓存在 `%LOCALAPPDATA%\pyinstaller`**，那份缓存是环境还好时留下的；`--clean` 清掉缓存就会重新探测并暴露这个坑。**别依赖缓存，把变量显式写上。**
   对应的验证：打完跑 `_audit/verify_exe.py`（按窗口标题找 hwnd → 截图 → 量化亮度），能开到窗口才算过。
+- **拉起 ComfyUI 必须传 `--output-directory`，否则工作流产物会跑到 `<comfy_dir>\output`**（v1.2.20 修，用户报的"输出目录写的是一个、跑起来又落到别处"）：工作流里 `SaveVideo` / `VHS_VideoCombine` 的 `filename_prefix` 是**相对路径**（`video/seedvr2`、`upscaled/flashvsr`），基准就是 ComfyUI 进程的输出根；而 ComfyUI 只在 `if args.output_directory:`（`comfy/cli_args.py:72` 定义、`main.py:159` 生效）为真时才用参数值，不传就用 `folder_paths.py:69` 的默认 `<comfy_dir>\output`。所以启动命令里**必须有** `--output-directory CONFIG["output_dir"]`，并且先 `os.makedirs`（ComfyUI 只会用不会建），建不出来时降级为不传并记 `warn`，别让服务起不来。**改完必须重启服务才生效**（`comfy_alive()` 为真时不重启）。新增任何 spawn ComfyUI 的代码点都要带上它。
 
 ## 约定
 
