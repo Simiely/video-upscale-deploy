@@ -38,7 +38,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.2.18"                                 # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.2.19"                                 # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -49,6 +49,30 @@ CONFIG = {
     "comfy_url":    "http://127.0.0.1:8188",
     "log_dir":      os.path.join(APP_DIR, "logs"),   # 日志落盘目录（开关见 log_to_file）
 }
+
+def _autodetect_deploy_root():
+    """部署包根目录自动定位（v1.2.19）：启动器现在住在 <deploy_root>/launcher/ 里，
+    上一级就是部署包根，于是新用户 clone 完零配置即可用。
+
+    判据与 运行时.STARTUP_PROBES 里 deploy_root 那一项保持一致（要有引擎子目录），
+    否则就是"目录在、脚本没铺"的半成品，那还不如不用自动结果。
+    探测不到返回空串。
+    """
+    parent = os.path.dirname(APP_DIR)
+    if not parent or parent == APP_DIR:          # 已经在根上，没有再上一层
+        return ""
+    for marker in ("02-FlashVSR", "03-SeedVR2"):
+        if os.path.isdir(os.path.join(parent, marker)):
+            return parent
+    return ""
+
+# 仅在**内置默认路径不成立**时（换盘、新机器、整包挪走）才启用自动定位。
+# 顺序很关键：这里的结果仍然会被紧随其后的「启动器配置.json」覆盖 ——
+# 用户手写的路径永远最大，自动值只是"没写时的兜底"。
+if not os.path.isdir(CONFIG["deploy_root"]):
+    _auto_root = _autodetect_deploy_root()
+    if _auto_root:
+        CONFIG["deploy_root"] = _auto_root
 
 _cfg_path = os.path.join(APP_DIR, "启动器配置.json")
 if os.path.exists(_cfg_path):                       # 允许用同名 JSON 覆盖默认路径

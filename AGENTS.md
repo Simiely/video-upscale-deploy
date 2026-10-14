@@ -1,9 +1,26 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-09-30 v1.7.0 SeedVR2 编码器路径定位与处置（ffmpeg 固定落点 + 子进程 PATH 复核 + 补推 3 处既有修复）(commit `5fde16a8`)
+> 📌 **文档基线**：2026-10-14 **v1.9.0**（两个仓库合并：`video-launcher` 用 git subtree 并入 `launcher/` 子目录〔完整提交历史保留〕 + 启动器 `deploy_root` 自动定位）(commit `待回填`)
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
+
+## 仓库结构（v1.9.0 起）
+
+本仓库 = **部署包（根目录）+ 图形启动器（`launcher/`）**。
+`launcher/` 是 v1.9.0 从独立的 `video-launcher` 仓库用 **`git subtree`** 并入的 ——
+**完整提交历史都在这一棵历史里**（`git log --oneline -- launcher/` 可查），不是搬文件压平。
+
+| 区域 | 内容 | 语言 | 什么时候动 |
+|---|---|---|---|
+| 根：`00-ComfyUI底座/` ~ `03-SeedVR2/`、`common.ps1`、`检查环境.ps1` | 装环境、批量放大 | PowerShell 5.1 | 换引擎版本、调参数 |
+| `workflows/` | 11 份工作流图（API 扁平表格式） | JSON | 换模型、调档位 |
+| `launcher/` | 桌面启动器（界面 + 调度） | Python 3.12+ / tkinter | 改界面、改调度逻辑 |
+
+> ⚠️ **改工作流文件名要同步三处**（v1.8.0 那次改名就是这三处）：
+> ① `workflows/` 里的文件名 → ② `launcher/运行时.py` 的 `WORKFLOWS` 里六条 `api` 路径
+> → ③ ComfyUI `user/default/workflows/` 下的画布原件名（对应 `launcher/桥接资源.py` 的 `WF_UI_SOURCES`）。
+> 合并解决了"两个仓库来回同步"，但这三处还在同一仓库的不同位置，改名时别漏。
 
 ## 技术栈
 

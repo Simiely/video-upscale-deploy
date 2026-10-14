@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-10-14 **v1.2.18**（commit hash `d5b21ad`）（同步部署仓库 v1.8.0 的工作流改名：`WORKFLOWS` 六条路径 + `WF_UI_SOURCES` 画布原件映射 + `cleanup_synced_api` 新旧名并集；只跟随改名，不改行为）· 2026-10-12 **v1.2.17**（桥接扩展一键载入画布：装 `video-launcher-bridge` + 「加载到画布」按钮 + I2V 画布构造；v1.2.16 的 API 格式同步确认画布打不开、已移除并清理）· 2026-10-10 **v1.2.15**（commit hash 见 docs 提交）**六套内置方案全部可直推：MiniMax 子图离线展开成 API 图（T2V/I2V）+ I2V 首帧自动抽取（`extract_first_frame`/`apply_input_image`）+ SeedVR2 两套补绑（「极致 原画」改「极致 2160」——SeedVR2 没有"保持原画"参数）** + ComfyUI 工作流全量并入（启动扫工作流目录）+ UI→API 转换器（本地图从"能选不能推"变"可直推"）+ 工作流备注名（`wf_alias` 落盘）+ 主文件拆出 `服务面板.py` mixin（974→899 逻辑行）（v1.2.14）+ 外部拉起的 ComfyUI 也能停 / 重启（按命令行找进程：`find_comfy_pids` + `taskkill /T /F`；cwd 启动的只列不杀）（v1.2.13）+ 布局收敛：服务卡回中栏顶部 + 工作流下拉改弹出浮层（布局不再被撑动）+ 服务卡四按钮一行等大（统一 minwidth）+ 上排高度 = max(右栏工作流卡+冗余, 中栏兜底)（v1.2.12）+ 内置方案绑定真实 API 图可直推 + 加载图进下拉 + 停止队列任务（v1.2.11）+ 设置项可打开可手改（v1.2.10）+ 启动自检（v1.2.9）+ 日志落盘（v1.2.8）+ ComfyUI 日志保真（v1.2.6）
+> 📌 **文档基线**：2026-10-14 **v1.2.19**（仓库合并进 `video-upscale-deploy/launcher/` + `deploy_root` 自动定位 `_autodetect_deploy_root`）· 2026-10-14 **v1.2.18**（commit hash `d5b21ad`）（同步部署仓库 v1.8.0 的工作流改名：`WORKFLOWS` 六条路径 + `WF_UI_SOURCES` 画布原件映射 + `cleanup_synced_api` 新旧名并集；只跟随改名，不改行为）· 2026-10-12 **v1.2.17**（桥接扩展一键载入画布：装 `video-launcher-bridge` + 「加载到画布」按钮 + I2V 画布构造；v1.2.16 的 API 格式同步确认画布打不开、已移除并清理）· 2026-10-10 **v1.2.15**（commit hash 见 docs 提交）**六套内置方案全部可直推：MiniMax 子图离线展开成 API 图（T2V/I2V）+ I2V 首帧自动抽取（`extract_first_frame`/`apply_input_image`）+ SeedVR2 两套补绑（「极致 原画」改「极致 2160」——SeedVR2 没有"保持原画"参数）** + ComfyUI 工作流全量并入（启动扫工作流目录）+ UI→API 转换器（本地图从"能选不能推"变"可直推"）+ 工作流备注名（`wf_alias` 落盘）+ 主文件拆出 `服务面板.py` mixin（974→899 逻辑行）（v1.2.14）+ 外部拉起的 ComfyUI 也能停 / 重启（按命令行找进程：`find_comfy_pids` + `taskkill /T /F`；cwd 启动的只列不杀）（v1.2.13）+ 布局收敛：服务卡回中栏顶部 + 工作流下拉改弹出浮层（布局不再被撑动）+ 服务卡四按钮一行等大（统一 minwidth）+ 上排高度 = max(右栏工作流卡+冗余, 中栏兜底)（v1.2.12）+ 内置方案绑定真实 API 图可直推 + 加载图进下拉 + 停止队列任务（v1.2.11）+ 设置项可打开可手改（v1.2.10）+ 启动自检（v1.2.9）+ 日志落盘（v1.2.8）+ ComfyUI 日志保真（v1.2.6）
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 ## 技术栈
@@ -8,7 +8,8 @@
 - Python **3.12+**（本机 3.13.15），**纯标准库**：`tkinter`（**自绘控件，不用 ttk**）/ `subprocess` / `threading` + `queue` / `urllib.request` / `json` / `webbrowser`
 - **五文件结构（v1.2.17 起；v1.2.14 为四文件）**：`视频方案启动器.py`（配置 + 业务 + 界面装配；**版本号常量 `APP_VER`**，窗口标题带它） + `服务面板.py`（**App 的服务 mixin**：服务启停 / 重启 / 队列清理 / 批量任务 15 个方法，v1.2.14 拆出；与主程序共享**同一个** CONFIG 字典——启动时注入引用） + `ui_kit.py`（深色自绘控件库 + 设计令牌，含 `SettingsList` 设置项列表 / `ask_text` 模态输入弹窗 / `WorkflowDetail` 工作流详情） + `桥接资源.py`（v1.2.17：桥接扩展源码常量 + `WF_UI_SOURCES` 映射 + `build_i2v_ui` I2V 画布构造；纯数据/纯逻辑，不 import 业务代码——因运行时.py 逻辑行预算拆出） + `运行时.py`（与界面无关的运行时支撑：`NO_WINDOW` / 绕代理 HTTP / 崩溃落盘 / **日志行解析与清洗** / **日志落盘** / **启动自检** / **设置项读写与打开** / **工作流 API 图取用与 UI→API 转换**：`pick_api` / `load_api` / `read_workflow` / `apply_input` / `apply_patch` / `ui_to_api` / **工作流目录扫描**：`scan_workflows` / 内置工作流清单）
 - 打包：PyInstaller（`VideoLauncher.spec`，单文件、`console=False`、**`upx=False`**；会自动跟随 `import ui_kit` / `import 运行时`）
-- 宿主链路：PowerShell 5.1 → `video-upscale-deploy` 下的 `.ps1` → ComfyUI（`127.0.0.1:8188`）
+- **位置（v1.2.19 起）**：本程序住在 `video-upscale-deploy` 仓库的 `launcher/` 子目录，与它调用的 `.ps1` **同仓库**（旧 URL `Simiely/video-launcher` 已归档，历史上限 v1.2.18）。启动时 `_autodetect_deploy_root()` 若发现自己在 `<部署根>/launcher/` 下（上一级含 `02-FlashVSR` 或 `03-SeedVR2`）就自动认上一级；优先级 = **显式配置 > 自动定位 > 内置兜底**，兜底值成立时（本机 `C:\AI\video-upscale-deploy` ）自动定位根本不启用，行为与合并前完全一致
+- 宿主链路：PowerShell 5.1 → **本目录的上一级**（`../`）下的 `.ps1` → ComfyUI（`127.0.0.1:8188`）
 
 ## 关键坑（改代码前先看）
 
@@ -80,7 +81,8 @@
 ## 常用命令
 
 ```bash
-python 视频方案启动器.py                                          # 直接运行
+cd <部署根>/launcher                                             # 例如 C:\AI\video-upscale-deploy\launcher
+python 视频方案启动器.py                                          # 直接运行（自动认出部署根，无需配置）
 taskkill /F /IM VideoLauncher.exe                                # 打包前清残留（会锁 dist）
 export TCL_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tcl8.6'   # 必设，否则打出无 tkinter 的坏 exe
 export TK_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tk8.6'     # 同上

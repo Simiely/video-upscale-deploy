@@ -1,9 +1,19 @@
-# video-upscale-deploy · 本地视频放大部署包
+# video-upscale-deploy · 本地视频放大部署包 + 图形启动器
 
 > 面向 RTX 4070 Super 12G / 4070 Ti Super 16G / RTX 4090 24G 三张显卡的**可执行**本地视频放大方案。
-> 全部脚本为 PowerShell，双击或命令行运行即可，不需要写代码。
+> 环境用 PowerShell 装，日常用图形界面跑 —— 不需要写代码。
 
 一套脚本，三种画质与速度的取舍：**日常批量用 Video2X，正式出片用 SeedVR2，FlashVSR 在中间补位。**
+
+本仓库装两件事：
+
+| 组成部分 | 位置 | 干什么 |
+|---|---|---|
+| **部署包** | 根目录 `00-ComfyUI底座/` ~ `03-SeedVR2/` | **装环境**：底座、三套引擎、ffmpeg 体检，全是 PowerShell |
+| **图形启动器** | [`launcher/`](launcher/) | **日常用**：一个窗口管住启动服务、挑输入、传参、实时看日志 |
+
+> **v1.9.0 起两个仓库合并**：原先独立的 [`video-launcher`](https://github.com/Simiely/video-launcher) 仓库整体并入本仓库的 [`launcher/`](launcher/)。
+> 从此工作流改名、路径调整只需改一处，不再需要两个仓库来回同步。
 
 ---
 
@@ -57,6 +67,8 @@ powershell -ExecutionPolicy Bypass -File .\02-FlashVSR\安装FlashVSR.ps1
 powershell -ExecutionPolicy Bypass -File .\03-SeedVR2\安装SeedVR2.ps1 -Profile 12g
 ```
 
+装完环境就能开图形界面，日常不必再碰命令行 —— 见下面「图形界面」一节。
+
 ## 快速开始
 
 ```powershell
@@ -71,6 +83,19 @@ powershell -File .\03-SeedVR2\批量放大.ps1 -InputPath "E:\VideoUpscale\input
 ```
 
 ### 图形界面（不用命令行）
+
+**A. 用启动器（推荐，v1.9.0 起随仓库自带）**
+
+```powershell
+python .\launcher\视频方案启动器.py       # 源码直接跑（Windows + Python 3.12+）
+# 或下载 Releases 里的 VideoLauncher.exe 双击
+```
+
+启动器会**自动认出自己所在的部署包**（`launcher/` 的上一级就是部署根），无需配置任何路径。
+一个窗口里就能启动/停止 ComfyUI、挑输入、调参数、实时看日志，也能把工作流直接推进画布。
+详见 [launcher/README.md](launcher/README.md)。
+
+**B. 只用 PowerShell 脚本**
 
 ```powershell
 # 启动服务（会自动开浏览器）
@@ -105,6 +130,14 @@ video-upscale-deploy/
 ├── .gitignore
 ├── docs/
 │   └── 使用指南.md          # 完整部署手册（含逐条修订记录）
+├── launcher/               # 图形启动器（v1.9.0 起并入，原 video-launcher 仓库）
+│   ├── README.md           #   启动器专项说明：界面、改设置、启动自检、打包
+│   ├── 视频方案启动器.py     #   入口：配置 + 业务逻辑 + 界面装配（版本号 APP_VER 在此）
+│   ├── 运行时.py            #   与界面无关的运行时支撑：自检 / 日志 / 工作流取用
+│   ├── 服务面板.py          #   服务启停 / 队列清理 / 批量任务 mixin
+│   ├── ui_kit.py           #   深色自绘控件库 + 设计令牌
+│   ├── 桥接资源.py          #   「加载到画布」桥接扩展的资源与构造
+│   └── VideoLauncher.spec  #   PyInstaller 打包配置（exe 不入库，走 Releases）
 ├── workflows/              # 图形界面工作流（拖进 ComfyUI 网页即用）
 │   ├── README.md           #   索引（命名规则、每份的模型/效果/档位）、用法、参数速查
 │   ├── FlashVSR/           #   FlashVSR 倍率型放大：2× 有声 / 2× 无音轨 / 长视频自动分段
@@ -130,6 +163,7 @@ video-upscale-deploy/
 
 | 文档 | 给谁看 | 内容 |
 |---|---|---|
+| [launcher/README.md](launcher/README.md) | 使用者 | 图形启动器：界面说明、改设置、启动自检、打包（含 tkinter 打包坑） |
 | [workflows/README.md](workflows/README.md) | 使用者 | 图形界面工作流：拖入即用、两个 FlashVSR 版本的区别、参数速查、实测性能 |
 | [docs/使用指南.md](docs/使用指南.md) | 使用者 | 执行顺序、每个步骤的作用、全部参数说明、显卡分配、图形界面连线表、常见问题、修订记录 |
 | [AGENTS.md](AGENTS.md) | AI / 未来的你 | 技术栈精确版本、关键坑、约定、常用命令 |

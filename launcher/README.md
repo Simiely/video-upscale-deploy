@@ -3,6 +3,11 @@
 > 一个窗口管住本地三套视频 AI 方案：**拉起 ComfyUI 服务 → 选输入 → 开跑**。
 > 纯 Python 标准库实现（Tkinter，深色 UI 全自绘），零第三方依赖；源码可直接运行，也可打包成单文件 exe。
 
+> **它现在住在哪**：自 **v1.9.0** 起两个仓库合并，本程序随部署包一起分发，
+> 位置是 [`video-upscale-deploy`](../README.md) 仓库的 `launcher/` 子目录。
+> 启动时若发现自己在 `<部署根>/launcher/` 里，会**自动把上一级认作部署根**（v1.2.19 起），
+> 所以正常 clone 下来直接跑，**不需要配任何路径**。
+
 ## 它解决什么
 
 本地部署的视频放大 / 生成方案分散在多个目录、十几个 `.ps1` 里，每次都要手开终端、记参数、盯日志。本启动器把「启动服务 + 挑输入 + 传参 + 实时看日志」收进一个 GUI：
@@ -56,7 +61,7 @@
 |---|---|---|
 | `comfy_dir` | `C:\AI\ComfyUI` | ComfyUI 底座目录 |
 | `comfy_py` | `C:\AI\ComfyUI\.venv\Scripts\python.exe` | 底座使用的解释器 |
-| `deploy_root` | `C:\AI\video-upscale-deploy` | 批量放大脚本所在仓库 |
+| `deploy_root` | **自动定位**（兜底 `C:\AI\video-upscale-deploy`） | 部署包根目录；程序在 `<根>/launcher/` 下时自动认上一级，见「覆盖默认路径」 |
 | `ffmpeg_dir` | `C:\AI\ffmpeg\bin` | 显式前置到子进程 PATH，不依赖注册表 |
 | `input_dir` | `E:\VideoUpscale\input` | 素材目录 |
 | `output_dir` | `E:\VideoUpscale\output` | 成品目录 |
@@ -188,7 +193,8 @@
 ## 快速开始
 
 ```bash
-python 视频方案启动器.py
+cd <部署根>/launcher          # 例如 C:\AI\video-upscale-deploy\launcher
+python 视频方案启动器.py       # 会自动认出 <部署根>，无需配置路径
 ```
 
 1. 点顶栏「启动服务」，等状态变 **● 运行中**（首次加载约 15~60 秒，就绪后自动打开网页）
@@ -202,6 +208,15 @@ python 视频方案启动器.py
 
 ## 覆盖默认路径
 
+**先说默认行为**（v1.2.19 起）—— 启动时按这个顺序决定部署根目录：
+
+1. `启动器配置.json` 里显式写的 `deploy_root` —— **优先级最高，你写的永远算数**
+2. **自动定位**：程序自己在 `<某目录>/launcher/` 下，且那个上一级里有 `02-FlashVSR` 或 `03-SeedVR2`，就用上一级
+3. 兜底内置值 `C:\AI\video-upscale-deploy`
+
+所以正常情况下（整个仓库 clone 下来、从 `launcher/` 里运行）**什么都不用配**。
+只有把程序搬离部署包、或想指到别的部署副本时，才需要手动覆盖：
+
 把 `启动器配置.example.json` 复制为 **`启动器配置.json`**，放在**程序同目录**（exe 则放 exe 旁边），只写需要改的键即可：
 
 ```json
@@ -212,9 +227,16 @@ python 视频方案启动器.py
 
 ## 打包
 
+在 `launcher/` 目录下执行：
+
 ```bash
 pyinstaller VideoLauncher.spec
 ```
+
+> ⚠️ **打包前必须导出 `TCL_LIBRARY` / `TK_LIBRARY`**，否则 PyInstaller 会**静默**打出没有 tkinter 的坏 exe ——
+> 构建照样成功（exit 0、不报错），一启动才 `ModuleNotFoundError: No module named 'tkinter'`。
+> 一眼识别：产物只有 **~10.19 MB**（正常 **~13.28 MB**），或日志里没有 `hook-_tkinter.py`。
+> 完整成因与正确命令见 [`AGENTS.md`](./AGENTS.md) 的「关键坑」。
 
 产物 `dist/VideoLauncher.exe`（单文件、无控制台窗口，约 13 MB；会跟随 `import ui_kit` / `import 运行时` 自动打包）。
 **打包产物不入库，走 Releases 发行。**
@@ -222,9 +244,12 @@ pyinstaller VideoLauncher.spec
 > 打包前后注意：① 先 `taskkill /F /IM VideoLauncher.exe` 清残留（运行中的 exe 会锁住 `dist`，`--clean` 删不掉旧产物 → 构建中止却"看起来成功"，dist 里还是上一版）—— **你自己双击开着的那份也算数**（v1.2.10 实测：窗口还开着就打包，构建直接中止，`dist` 里仍是旧版）；② 打完核对**时间戳 + 体积**再冒烟。
 > spec 里 **`upx=False`**：UPX 压缩过的单文件 exe 更像"自解压壳"，易被安全软件误报（表现就是"打开一闪就关"），收益远小于风险。
 
-## 相关仓库
+## 所属仓库
 
-- [`video-upscale-deploy`](https://github.com/Simiely/video-upscale-deploy) —— Video2X / FlashVSR / SeedVR2 三套部署包（本启动器调用其中 02 / 03）
+**v1.9.0 起两个仓库合并**，本程序现在是 [`video-upscale-deploy`](https://github.com/Simiely/video-upscale-deploy) 的 `launcher/` 子目录。
+
+- [`video-upscale-deploy`](https://github.com/Simiely/video-upscale-deploy) —— 部署包 + 本启动器。它调用的 `02-FlashVSR/批量放大.ps1`、`03-SeedVR2/批量放大.ps1` 就在**同一个仓库的根目录**里
+- [`video-launcher`](https://github.com/Simiely/video-launcher) —— 合并前的旧仓库，已归档只读，历史上限至 v1.2.18
 - [`minimax-h3-local-deploy`](https://github.com/Simiely/minimax-h3-local-deploy) —— MiniMax H3 本地部署说明
 - 索引：[`design-tools`](https://github.com/Simiely/design-tools)
 
