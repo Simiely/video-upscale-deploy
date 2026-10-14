@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-10-14 **v1.9.1**（ComfyUI 输出根统一到 `$OUTPUT_DIR`：`02-FlashVSR/批量放大.ps1` 不再写死 `$COMFY_DIR\output`、`-AutoStart` 补传 `--output-directory`；配套启动器 v1.2.20）· 2026-10-14 **v1.9.0**（两个仓库合并：`video-launcher` 用 git subtree 并入 `launcher/` 子目录〔完整提交历史保留〕 + 启动器 `deploy_root` 自动定位）(commit `待回填`)
+> 📌 **文档基线**：2026-10-14 **v1.9.1**（ComfyUI 输出根统一到 `$OUTPUT_DIR`：`02-FlashVSR/批量放大.ps1` 不再写死 `$COMFY_DIR\output`、`-AutoStart` 补传 `--output-directory`；配套启动器 v1.2.20）· 2026-10-14 **v1.9.0**（两个仓库合并：`video-launcher` 用 git subtree 并入 `launcher/` 子目录〔完整提交历史保留〕 + 启动器 `deploy_root` 自动定位）(commit `732f858`)
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
