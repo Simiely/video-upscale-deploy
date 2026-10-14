@@ -1,0 +1,104 @@
+# AGENTS.md · 项目规则
+
+> 📌 **文档基线**：2026-10-14 **v1.2.18**（commit hash `d5b21ad`）（同步部署仓库 v1.8.0 的工作流改名：`WORKFLOWS` 六条路径 + `WF_UI_SOURCES` 画布原件映射 + `cleanup_synced_api` 新旧名并集；只跟随改名，不改行为）· 2026-10-12 **v1.2.17**（桥接扩展一键载入画布：装 `video-launcher-bridge` + 「加载到画布」按钮 + I2V 画布构造；v1.2.16 的 API 格式同步确认画布打不开、已移除并清理）· 2026-10-10 **v1.2.15**（commit hash 见 docs 提交）**六套内置方案全部可直推：MiniMax 子图离线展开成 API 图（T2V/I2V）+ I2V 首帧自动抽取（`extract_first_frame`/`apply_input_image`）+ SeedVR2 两套补绑（「极致 原画」改「极致 2160」——SeedVR2 没有"保持原画"参数）** + ComfyUI 工作流全量并入（启动扫工作流目录）+ UI→API 转换器（本地图从"能选不能推"变"可直推"）+ 工作流备注名（`wf_alias` 落盘）+ 主文件拆出 `服务面板.py` mixin（974→899 逻辑行）（v1.2.14）+ 外部拉起的 ComfyUI 也能停 / 重启（按命令行找进程：`find_comfy_pids` + `taskkill /T /F`；cwd 启动的只列不杀）（v1.2.13）+ 布局收敛：服务卡回中栏顶部 + 工作流下拉改弹出浮层（布局不再被撑动）+ 服务卡四按钮一行等大（统一 minwidth）+ 上排高度 = max(右栏工作流卡+冗余, 中栏兜底)（v1.2.12）+ 内置方案绑定真实 API 图可直推 + 加载图进下拉 + 停止队列任务（v1.2.11）+ 设置项可打开可手改（v1.2.10）+ 启动自检（v1.2.9）+ 日志落盘（v1.2.8）+ ComfyUI 日志保真（v1.2.6）
+> **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
+
+## 技术栈
+
+- Python **3.12+**（本机 3.13.15），**纯标准库**：`tkinter`（**自绘控件，不用 ttk**）/ `subprocess` / `threading` + `queue` / `urllib.request` / `json` / `webbrowser`
+- **五文件结构（v1.2.17 起；v1.2.14 为四文件）**：`视频方案启动器.py`（配置 + 业务 + 界面装配；**版本号常量 `APP_VER`**，窗口标题带它） + `服务面板.py`（**App 的服务 mixin**：服务启停 / 重启 / 队列清理 / 批量任务 15 个方法，v1.2.14 拆出；与主程序共享**同一个** CONFIG 字典——启动时注入引用） + `ui_kit.py`（深色自绘控件库 + 设计令牌，含 `SettingsList` 设置项列表 / `ask_text` 模态输入弹窗 / `WorkflowDetail` 工作流详情） + `桥接资源.py`（v1.2.17：桥接扩展源码常量 + `WF_UI_SOURCES` 映射 + `build_i2v_ui` I2V 画布构造；纯数据/纯逻辑，不 import 业务代码——因运行时.py 逻辑行预算拆出） + `运行时.py`（与界面无关的运行时支撑：`NO_WINDOW` / 绕代理 HTTP / 崩溃落盘 / **日志行解析与清洗** / **日志落盘** / **启动自检** / **设置项读写与打开** / **工作流 API 图取用与 UI→API 转换**：`pick_api` / `load_api` / `read_workflow` / `apply_input` / `apply_patch` / `ui_to_api` / **工作流目录扫描**：`scan_workflows` / 内置工作流清单）
+- 打包：PyInstaller（`VideoLauncher.spec`，单文件、`console=False`、**`upx=False`**；会自动跟随 `import ui_kit` / `import 运行时`）
+- 宿主链路：PowerShell 5.1 → `video-upscale-deploy` 下的 `.ps1` → ComfyUI（`127.0.0.1:8188`）
+
+## 关键坑（改代码前先看）
+
+- **PS 执行策略**：本机为 `Restricted`，`.ps1` 一律用 `powershell -NoProfile -ExecutionPolicy Bypass` 拉起。
+- **不要用 `-File`**：必须用 `-Command` 包一层，先设 `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8` 和 `$env:PYTHONIOENCODING='utf-8'`；否则 PS 5.1 按 cp936 重编 python 的 UTF-8 输出，**日志全变乱码**。
+- **探测本机服务必须绕代理**：Clash 会把 `127.0.0.1` 也代理掉并返回 502。一律走 `运行时.NO_PROXY_OP`（`ProxyHandler({})`），**不要用 `urlopen`**；业务代码统一调 `rt.http_json()` / `rt.http_post_json()`。
+- **每个子进程都要带 `creationflags=NO_WINDOW`**（v1.2.5）：exe 是 `console=False` 的 GUI 程序，spawn 控制台程序（`powershell` / `nvidia-smi` / ComfyUI 的 `python`）时 Windows 会**新开一个可见控制台窗口** —— 探测线程每 5 秒调一次 `nvidia-smi`，桌面就不停闪黑窗（用户报"打开了会一直闪窗口"）。`_run_ps` 用 `NO_WINDOW | CREATE_NEW_PROCESS_GROUP`。
+- **windowed 程序没有 stderr，异常必须落盘**（v1.2.5）：`main()` 里先 `install_crash_log()`、建 root 后 `watch_tk_errors(root)`，未捕获异常统一写同目录 `崩溃日志.log`。没有它，"闪退"是零信息问题。
+- **长任务不许同步等**：SeedVR2 单条 20+ 分钟。用子进程 + 线程读 stdout + `queue` + `root.after(150)` 刷新，UI 不能阻塞。
+- **后台线程绝不碰控件**：tkinter 非线程安全。线程里**只能**写 `logq` / `uiqueue`，`root.after` 与控件调用一律留给主线程（v1.2.0 曾因此抛 `main thread is not in main loop`）。
+- **静默吞异常必须写明理由**（v1.2.7）：`except Exception: pass` 本身可以是正确选择（退出路径、非关键信息降级），但**不许不写注释**。且优先"显式判掉正常失败"（`returncode != 0`、`read() is None`）而不是靠后续 `IndexError` 兜住 —— 后者让"预期失败"变成"意外异常"，行为测试里有一条逐行扫裸 `pass` 的守卫。
+- **每个子进程的参数口径统一**（v1.2.7）：`text=True` 一律配 `encoding="utf-8", errors="replace"`，`creationflags=NO_WINDOW` 必带。缺 `errors` 会让非 UTF-8 输出变成 `UnicodeDecodeError`，看着"降级正常"其实过程不可控。
+- **主线程心跳要 `try/finally`**（v1.2.5）：`_drain_log` 的 `root.after` 重排程必须在 `finally` 里；否则任一回调抛异常就会让刷新**永久停摆**（v1.1.2 同类静默故障）。
+- **进日志区的行必须先 `strip_ansi()`**（v1.2.6）：ComfyUI 新版给每条日志**无条件**加 ANSI 颜色码（连 `isatty` 都不判断），重定向到管道照样吐 `ESC[1mESC[32m[INFO]ESC[0m`；Tk 的 `Text` 不解析转义序列，会把它显示成方块 —— 每行都是乱码。**任何新增的日志来源（新的子进程、新的文件读取）都要过这一道**。
+- **只有本程序 spawn 的进程才有日志可读**（v1.2.6）：接日志靠的是"我持有的管道"，不是"服务在跑"。外部已启动的 ComfyUI 输出绑在别的终端上，本程序没有句柄 —— 日志区不会出现 `[ComfyUI]` 行，这不是 bug。别为了"显示外部服务的日志"去猜实现。
+- **解析进度别用 `x/y` 当唯一信号**（v1.2.6）：日志里 `16/9`（宽高比）、`0.0001/0.0002`（小数）、`7.6/12.0G`（显存）都会被误判，实测把百分比标签写成过 **177%**。规则在 `运行时.progress_pct()`：优先 `n%` → 分数要求 `a ≤ b` → 分数前不能是数字/小数点 → 写入前夹 0~100。**测试解析器要拿真实反例，只测正例等于没测**。
+- **给日志上色别只认中文关键词**（v1.2.6）：ComfyUI 是英文日志，`[ComfyUI] [ERROR] ...` 里没有"失败/错误"，会被涂成普通灰。优先用机器生成的级别标记（`运行时.log_level()` → `tag_for()`）。
+- **日志只有一个漏斗，日志相关的后处理都接在那一处**（v1.2.8）：程序自己的 `log()` 与后台 `_svc_reader()` 读到的 `[ComfyUI]` 行都 `put` 进同一个 `logq`，由 `_drain_lines()` 统一出口。所以落盘只需要在那儿接一行，**不要在 `log()` 或各个采集点分散处理**。落盘调用**必须夹在 `strip_ansi` 与界面 `insert` 之间** —— 这个顺序是"文件里的行 == 界面显示的行"的结构保证。
+- **"能看见"和"能留下"是两个需求**（v1.2.8）：日志区在内存里，关窗即失、超 2000 行裁掉**最旧的**（恰恰是启动参数/模型加载/节点失败）。要留档就加**旁路**（`运行时.LogFile`），且主链路失败也只能降级、不得影响界面；留档文件**不做裁剪**。
+- **Tk 的文本索引会"带上下文"**（v1.2.8）：`get("1.0","end")` 比插入内容**多一个隐性尾换行**（实测 `'a\nb\nc\n\n'`），按它数行数会凭空多 1 行 —— 必须用 `end-1c`。这与 `Text.count()` 返回 tuple 是同一族陷阱：**先用最小实验确认返回值，再写断言**。
+- **`APP_DIR` 取自 `sys.argv[0]`（启动者所在目录），不是模块文件位置**（v1.2.8）：所以 `启动器配置.json` 与 `logs/` 都跟着"谁启动"走 —— 对 exe 正是"exe 所在目录"（期望行为），但在别的目录里跑验证脚本时程序会去那个目录找配置（写脚本时把 `sys.argv[0]` 指成主程序）。
+- **别把路径"打印"出来当检查过**（v1.2.9）：启动日志里原来三行只有 ffmpeg 真检查过，另两行是纯打印 —— `C:\AI\video-upscale-deploy` 明明不存在，日志却长得和存在一样，只有跑批量任务才会炸。凡"要用户按它动手"的信息，必须**真去查**并给出可执行原因（`未配置` / `路径不存在` / `缺 <项>`）；判就判到**能力级**（ComfyUI 要 `main.py`、部署脚本要引擎子目录、ffmpeg 要 `ffmpeg.exe`），目录级会给出假绿灯。实现走 `运行时.probe_path()` / `startup_lines()`，日志与左栏设置共用同一份结果（同为纯函数，结果必然一致）。
+- **跟着配置走的派生路径要用函数，别用模块级常量**（v1.2.10）：`FLASHVSR_PS = os.path.join(CONFIG["deploy_root"], ...)` 在 `import` 那一刻就定死了 —— 用户在设置里改了 `deploy_root`，日志当场转绿、面板也显示新值，**但点运行拿到的还是旧路径**。这是"改了没生效，界面上却一切正常"的一类，比"改不了"更难发现。现在走 `engine_ps(engine)` 现算。做"可修改的配置"时，grep 一遍该键的所有使用点，逐个判断"运行时读取还是启动时固化"。
+- **验证脚本会污染 `APP_DIR` 下的配置文件**（v1.2.10）：`APP_DIR` 取自 `sys.argv[0]`，所以在 `_audit/` 跑验证脚本时程序就去 `_audit/` 找「启动器配置.json」—— **上一次运行残留的值会变成下一次的初始状态**，让"改成 X"这类断言凭空通过。症状很好认：`on_save` 没被调用、日志区为空，但"值已更新"却是 PASS（`_edit` 判定 `new == it["value"]` = 没改动，直接返回，行为本身正确）。跑前把已有配置挪开、让 `CONFIG` 从默认值起跑，收尾放回；目标值按当前值动态算。**断言之间互相矛盾时，别挑好看的那条信。**
+- **截图留证要抓窗口自身（`PrintWindow`），不是"屏幕上那块矩形"**（v1.2.10）：`ImageGrab.grab(bbox=窗口矩形)` 在窗口被遮挡时会抓到**盖住它的那个** —— 实测抓出一张视频播放器画面，尺寸还"正常"，看着很像没问题的证据图。v1.2.8 已给主窗口定过这条，v1.2.10 在**模态弹窗**上又踩一次：凡"给某个具体窗口留证"都用 `PrintWindow`，退回屏幕抓取时必须在输出里标注。**"尺寸对"不等于"内容对"。**
+- **`pack(expand=True)` 不会把按钮等分——要等大就统一请求宽（`minwidth`）**（v1.2.12）：Canvas 类自绘按钮的请求宽 = 文字宽 + 内边距，pack 的 expand 只平分**多余**空间，基础分配按各自请求宽——"停止队列任务"6 个字天生比 4 字按钮宽两个字的量，怎么分都错位。服务卡四钮统一 `minwidth=112` 后实测 144/145/145/145 全等。同理，"没溢出容器"的断言测不出这种错位，要断言"四钮宽全等 + 同一排"。
+- **结束"不属于自己"的进程：匹配要保守，歧义时只列不杀**（v1.2.13）：外部 ComfyUI 靠命令行 / 可执行路径里带配置目录来认（`find_comfy_pids`），cwd 方式启动的（命令行只有 `main.py`、工作目录不进 `Win32_Process.CommandLine`）**永远只列为疑似候选**——别的程序也可能叫 `main.py`，自动杀会误伤用户无关进程。查询失败（None）≠ 没找到（[]），话术必须分开。
+- **拼外部 DSL（WQL / 正则 / SQL）别用 `%` 格式化，占位符替换后要核对通配符**（v1.2.13）：`Name like '%python%'` 里的 `%p` / `%'` 会被 Python 当格式符炸掉；换成占位符替换后又把 `%` 丢了变成精确匹配——**返回空且不报错**，看着就像"本机没有 python 进程"。对照实验（去掉过滤列全部 / 加回过滤变空）两步锁定。
+- **子图实例的 `widgets_values` 才是权威，内层节点里的同名副本会陈旧**（v1.2.15）：实测同一份图实例存 864×480/5/8、内层存 1344×768/2/6 —— 展开子图必须以实例为准注入。子图边界：输入 `origin_id=-10`（`origin_slot`=输入序号）、输出 `target_id=-20`；重映射连线时**节点 inputs 里的 link 引用也要同步改**，只改连线表会在运行时才炸"找不到连线"。
+- **V3 动态输入（COMFY_AUTOGROW_V3 等）在 object_info 里没有逐槽定义**（v1.2.15）：`values.a` 这类"定义里没有但 UI 里有连线"的输入要照写进 API（graphToPrompt 同款行为）；SaveVideo 的 format/codec 这类动态 combo 的值在 widgets_values 里，转换器拿不到要显式补。
+- **UI 格式工作流不能直接 POST `/prompt`**（v1.2.14）：`/prompt` 的 `validate_prompt` 第一个循环就要求每项带 `class_type`，UI 格式（nodes 数组）直接 `missing_node_type`。要推必须经 `ui_to_api` 转换，转换依据 `/object_info`（**跑着的服务才有**；缓存一份，ComfyUI 重启过要失效重取）。
+- **UI→API 的值位对齐有两个反直觉点**（v1.2.14）：① 前端给**名字带 seed 的 INT/FLOAT 一律追加**"随机化选项"占位——哪怕节点定义里没有 `control_after_generate`（SeedVR2VideoUpscaler 实测值数组 13 位、部件 12 个），只认定义会整串错位；② 被**转成输入槽还连了线**的部件照样占值位（CreateVideo 的 fps），值位游标按定义序对每个部件类输入前进，连线只决定值从哪来。正确性判据是**类型对齐**：转完逐输入和 object_info 的类型/选项集比对，错位立刻现形。
+- **旁路（mode=4）与静音（mode=2）语义不同**（v1.2.14）：旁路节点不进 API 图、输出由同类型输入直通顶替（直通不了且下游可选 → 整个省略）；静音节点同样不进图——**但若把静音节点放进 API 图它会被执行**，绝不许。Reroute 是前端虚拟节点（object_info 里没有），按透明直通处理；Note/MarkdownNote 是便签，跳过。
+- **自绘按钮要断言"实际宽 ≥ 需求宽"，不是只测"没溢出容器"**（v1.2.11）：文字超宽时被**按钮自己**裁掉，按钮框还好好地留在容器里 —— "末按钮右缘 ≤ 卡片右缘"这类断言恒 PASS，测不出截断。加按钮前先算"平分宽 vs `font.measure(文字)+padding`"，不够就换行排布（服务卡四个按钮就是两行）；渲染验证补"需求宽 ≤ 实际宽 + 同排按钮 y 相等"两条断言。
+- **量尺寸前先跑 idle**（v1.2.5）：Tk 几何计算是 idle 任务，刚 `pack` 完读 `winfo_reqheight()` 拿到的是**旧值**（实测 263 vs 500）。任何"按需求高度自适应"的实测前必须 `update_idletasks()`，并加标志防重入。
+- **算容器需求别手数 pady**（v1.2.5）：用 `子控件.winfo_rooty() − 容器.winfo_rooty() + 子控件.winfo_reqheight()` 取最大值；手写 `A + S(14) + B` 实测漏算过 14px。
+- **ffmpeg 不靠注册表**：`_comfy_env()` 把 `ffmpeg_dir` 显式前置到子进程 `PATH`；本机实测出现过「父进程改了 PATH 但传不到子进程」。
+- **H3 参数在网页里调**：启动器只负责把服务与网页拉起来，工作流（提示词 / 帧数 / 步数）在 ComfyUI 里自己搭。
+- **自绘控件的颜色参数要归一化**：Tk 不认 CSS 的 `"transparent"`，写进 `outline` 会抛 `unknown color name`。
+- **一行里固定元素先 `pack`**：顶栏「按钮组 + 弹性 URL」必须先给按钮组分配空间，否则窄窗口会把按钮挤出卡片。
+- **像素走 `S()`、字号走 `f()`**：`ui_kit.S()` 按 DPI 缩放像素，字号用磅值交给 Tk 缩放，两者才同比例。
+- **打包必须带 `TCL_LIBRARY`/`TK_LIBRARY`，否则会静默打出没有 tkinter 的坏 exe**（v1.2.18 踩到，**能省一次假发版**）：本机构建解释器是 NuGet 版 `C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64`，它的 tcl/tk 布局让 `init.tcl` 找不到 —— 裸跑 `import tkinter` 成功（`TkVersion` 报得出来），但一调 `tkinter.Tk()` 就抛
+  `_tkinter.TclError: Can't find a usable init.tcl in the following directories:`。
+  而 PyInstaller 的 `hook-tkinter.py`（pre_find_module_path）判"tkinter 是否可用"靠的就是**隔离子进程里跑一次 `tkinter.Tk()`**（`utils/hooks/tcl_tk.py::_check_tkinter_fully_usable`）→ 失败即打印
+  `WARNING: tkinter installation is broken. It will be excluded from the application`，**然后照常构建成功**（exit 0，不报错），产出的 exe 一启动就 `ModuleNotFoundError: No module named 'tkinter'`。
+  两个特征一眼可辨：**体积从 ~13.28 MB 掉到 ~10.19 MB**，且构建日志里没有 `hook-_tkinter.py` / `pyi_rth__tkinter.py`。
+  正确姿势（先导出两个变量再打包）：
+  ```bash
+  export TCL_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tcl8.6'
+  export TK_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tk8.6'
+  pyinstaller VideoLauncher.spec --noconfirm --clean      # 打完体积应回到 ~13.28 MB
+  ```
+  ⚠️ 之前能打出好 exe，是因为 PyInstaller 把 Tcl/Tk 探测结果**缓存在 `%LOCALAPPDATA%\pyinstaller`**，那份缓存是环境还好时留下的；`--clean` 清掉缓存就会重新探测并暴露这个坑。**别依赖缓存，把变量显式写上。**
+  对应的验证：打完跑 `_audit/verify_exe.py`（按窗口标题找 hwnd → 截图 → 量化亮度），能开到窗口才算过。
+
+## 约定
+
+- UI 文案、注释、日志**全中文**；**零第三方依赖**，不引入 `requests` / `psutil` 等（打包体积与离线可用性优先）。
+- **左导航只放「会切换中栏内容」的入口**：导航项只有三个引擎。服务卡 / 工作流卡 / 设置都是**常显区**，不做导航项（v1.2.1、v1.2.3 两次收敛同一类问题）。引擎切换的唯一入口是 `_select_nav`，不该跳视野时用 `scroll=False`。
+- **三栏分工（v1.2.5 起为 2×3 网格）**：上排 左＝导航 + **设置常驻**（`_build_settings_section` → `ui_kit.SettingsList`；每项两行，标签行挂「打开」「修改」，值行本身也可点改）/ 中＝滚动舞台（只放引擎卡，无小标题、无切换按钮）/ 右＝**服务卡 → 工作流卡**；下排＝**运行日志横跨中栏 + 右栏**（`row=1, column=1, columnspan=2`），左栏 `rowspan=2` 通高。**卡片换容器＝换可用宽度**，搬动时按新栏宽重排（横排→纵排 / 网格，重设 `wraplength`）。`_scroll_to()` 只对还在 `self.stage` 里的控件有效。
+- **上排高度＝内容实测，剩余全给日志**（v1.2.5）：上排**不给 weight**，`_sync_top_height()` 实测后写回 `rowconfigure(0, minsize=...)`；下排 `weight=1` 吃剩余。**只在内容变化时调用**（切引擎 / 选工作流）—— 在 `<Configure>` 里无条件调会和 `<Configure>` 形成布局回环。v1.2.12 起下拉是弹出浮层，展开 / 收起不再改变布局高度。
+- **窗口尺寸**（v1.2.5）：1260×960 / `minsize` 1040×940，且 `min(设计值, 屏幕可用区)` 夹住 —— 高分屏下 `S()` 会放大（125% 时 `S(900)=1125`），不夹的话 1080p 屏上窗口底部（日志）会被顶到屏幕外。**改布局后必须重算每行需求高度**，否则下排会把上排挤到截断（按钮落折叠线下）。渲染验证要断言"控件底 ≤ 可视底"与"实际高 ≥ 请求高"。
+- **模块拆分按阈值**：单文件逻辑行超过 pylint 默认上限（**1000**）才拆。`ui_kit.py` 只放控件与设计令牌（含数据驱动的 `SettingsList` / `ask_text`）；`运行时.py` 只放与界面无关的运行时支撑（包括**日志行解析与清洗**：`strip_ansi` / `progress_pct` / `log_level` / `tag_for`，**日志落盘**：`LogFile` / `NoopLog`，**启动自检**：`STARTUP_PROBES` / `probe_path` / `startup_lines`，**设置项读写与打开**：`CONFIG_FIELDS` / `config_items` / `save_config` / `open_path`，**内置工作流清单**：`WORKFLOWS`），**两者都不 import 业务代码**（保持单向依赖：主程序 → 这两个模块）。分层要求：解析层只返回语义（级别名、标签名），**配色只由界面层的 `tag_config` 决定**；同理 `SettingsList` 不自己判路径对不对，`note` 由 `probe_path` 给出。✅ **v1.2.14 又拆过一次**：服务启停 / 批量任务 15 个方法搬 `服务面板.py`（App 的 mixin，主文件 **899 / 1000，余量 101**；mixin 的 no-member 误报在类级豁免并写明原因）。✅ v1.2.11 拆过：`_render_wf_detail` 整块（~70 行）搬 `ui_kit.WorkflowDetail`。✅ v1.2.12：`Dropdown` 弹出化 + `_watch_expand` 退役。**余量再回到 30 行以下时，先拆再加。**
+- **打包前先清进程 + 包后核对时间戳/体积**（v1.2.4 教训）：运行中的 exe 会锁住 `dist`，`--clean` 删不掉旧产物 → 构建中止却"看起来成功"。
+- 视觉改动必须**对齐设计稿**：蓝本见分支 `ui-redesign` 的 `redesign/video_launcher_sidebar.html`；改完跑截图验证（`radon`/像素亮度），别只靠"看着像"。
+- 路径不写死：新增路径一律先进 `CONFIG` 字典，并允许 `启动器配置.json` 覆盖。
+- 打包产物（`build/`、`dist/`）不入库，发行走 Releases。
+
+## 常用命令
+
+```bash
+python 视频方案启动器.py                                          # 直接运行
+taskkill /F /IM VideoLauncher.exe                                # 打包前清残留（会锁 dist）
+export TCL_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tcl8.6'   # 必设，否则打出无 tkinter 的坏 exe
+export TK_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tk8.6'     # 同上
+pyinstaller VideoLauncher.spec --noconfirm --clean                # 打包单文件 exe（产物应 ~13.28 MB）
+```
+
+## 验证纪律（静态 + 运行期 + 渲染三轨）
+
+改动后五件事都要跑，别只跑一件：
+
+1. `py_compile` 语法
+2. 静态：`pylint --enable=E` / `radon mi,cc,raw` / `vulture`（并确认主文件逻辑行 <1000）
+3. 运行期冒烟：实跑源码，盯 stderr 有无 Traceback
+4. 渲染验证：截图 + 量化亮度（深色应落在 40~55/255）+ **落点/防截断断言**，改 UI 时必跑
+5. **改动涉及子进程或打包时**：exe 也要单独验一次，并用「数可见控制台窗口」的方式确认没有黑窗闪现
+
+验证脚本在工作区 `../_audit/`（不入仓库）：`test_behavior.py`（行为断言）、`shot_ui.py`（渲染+落点）、`measure_layout.py`（布局量化）、`test_comfy_log.py`（**日志采集端到端**：仿 ComfyUI 子进程 → 真实 `svc_start()`，含修复前后对照与截图）、`verify_logfile_live.py`（**日志落盘真机端到端**：真 GUI 跑起来真写盘，核对文件行 == 界面行逐行一致；含默认关闭场景）、`watch_flash.py`（闪窗端到端）、`verify_exe.py`（exe 冒烟）、`probe_console.py`/`watch_console.py`（闪窗最小复现）。
+
+## 详细规则（按需 @引用）
+
+- @DEVELOPMENT.md —— 架构说明 + 关键问题与方案（一坑一篇）
