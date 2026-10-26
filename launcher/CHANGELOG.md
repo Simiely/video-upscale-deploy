@@ -2,6 +2,23 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.2.23 · 2026-10-26
+
+**新：缺失部署清单卡（P0 步骤 1–6）—— 部署完整性一键探测 + 一键安装。**
+
+### 根因（调研 docs/交接-缺失下载部署.md + 交叉验证）
+- 启动器此前没有"部署清单"概念：15 项模型 / 工作流资产（SeedVR2 3B fp8、FlashVSR-v1.1、Video2X 等）是否就绪、缺哪几项、怎么补，全靠人工翻目录或跑 `.ps1` 试错。
+- `docs/交接-缺失下载部署.md` 明确列为待办：本机与部署仓库对不齐时（镜像回退、单文件补下）缺少可视化的"差哪了"。
+
+### 变更
+- 新增 `launcher/部署清单.py`：纯数据模块 `DEPLOY_ITEMS`（15 项，字段 key/name/root/check/expect/script/desc），尺寸经 `hf-mirror.com` API 复核（seedvr2_ema_3b_fp8_e4m3fn = 3.16 GB、ema_vae_fp16 = 0.47 GB、FlashVSR-v1.1 全仓 6.47 GB）；`has_installer(key)` 判断有无安装脚本。
+- `launcher/运行时.py`：新增 `deploy_inventory(cfg)`（返回 6 元组 key / 名称 / 状态 / 说明 / 期望大小 / 脚本，状态 ∈ 就绪 / 缺失 / 不完整）+ `_resolve_deploy_root(cfg, root)`（配置键名或绝对路径归一）。
+- `launcher/视频方案启动器.py`：侧栏新增「部署清单」卡（`_build_deploy_card` + 刷新按钮 + 滚动清单行）、`_refresh_deploy`（主线程重跑探测重建行）、`_install_deploy`（互斥 + 校验脚本存在）、`_run_deploy_install`（后台线程 subprocess 跑安装 `.ps1`，stdout 逐行 `strip_ansi` 进日志，完成 `root.after(0, _refresh_deploy)` 回调刷新；`node_` 开头提示重启 ComfyUI）。
+
+### 验证
+- `py_compile` 三文件 OK；`verify_deploy.py` 断言 15 项字段完整 + `deploy_inventory` 就绪 / 缺失 / 不完整判定全部 PASS。
+- UI 渲染 / 落点 / 亮度需本机实跑（沙箱无法跑 tkinter）；P1（hf_pull 单文件补下 + 镜像回退 + 进度 UI）、P2（下载速度 / SHA256 / torch 探测 / ffmpeg 一键装 / 磁盘预检）待实现。
+
 ## v1.2.22 · 2026-10-26
 
 **修：右栏详情卡第三个按钮「加载到画布」被切掉、左栏长路径从单词中间断开 —— 三处"看起来像被裁"的排版缺陷。**
