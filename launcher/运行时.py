@@ -22,7 +22,7 @@ import traceback
 import urllib.request
 import webbrowser
 
-from 部署清单 import DEPLOY_ITEMS  # 缺失部署清单（纯数据模块）
+import 部署清单 as dl  # 缺失部署清单（纯数据模块）
 from 提示词 import (I2V_ALIGN, MM_FIELDS, MM_PROMPT_DEFAULT, MM_SOUND_FALLBACK,
                 apply_prompt, build_i2v_prompt)
 from 桥接资源 import (BRIDGE_INIT, BRIDGE_JS, WF_UI_SOURCES,      # 纯数据模块
@@ -1246,33 +1246,38 @@ WORKFLOWS = [
 def deploy_inventory(cfg):
     """探测 部署清单.DEPLOY_ITEMS 的每一项，返回探测结果。
 
-    返回：list of (key, 名称, 状态, 说明, 期望大小, 脚本)
+    返回：list of (key, 名称, 状态, 说明, 期望大小, 实际大小, 脚本)
       状态 ∈ {"就绪", "缺失", "不完整"}
         · 就绪       ：root 下 check 文件全部存在，且（若有期望大小）大小达标
-        · 不完整     ：文件存在但某文件大小 < 期望（"下了一半"），或根存在但 check 全缺且部分残存
-        · 缺失       ：根未配置/不存在，或 check 文件不全
-     判定 = 文件存在 + 大小校验，能发现"下载到一半"的残件。
-    脚本为空串表示暂无一键安装脚本（安装按钮应置灰）。
+        · 不完整     ：某文件/目录实测大小 < 期望（"下了一半"），或 check 不全但有残件
+        · 缺失       ：根未配置/不存在，或 check 文件/目录全不存在
+
+    v1.2.27：多返回一个「实际大小」（`path_size`）。
+    以前只有权重文件写了 expect，于是目录型条目（custom_nodes/*、models/FlashVSR-v1.1…）
+    在界面上全是「-」—— 用户看到的是一列半空的大小列。现在无论文件还是目录，
+    都按磁盘真实占用显示（目录递归合计）。
     """
     rows = []
-    for it in DEPLOY_ITEMS:
+    for it in dl.DEPLOY_ITEMS:
         root = _resolve_deploy_root(cfg, it.get("root", "comfy_dir"))
+        # expect 支持三种写法：None / 整数 / 与 check 等长的元组（H3 双 VAE 两文件大小不同）
+        expect_list = dl.expects_of(it)
+        total_expect = sum(x for x in expect_list if x) or None
         if not root or not os.path.isdir(root):
             rows.append((it["key"], it["name"], "缺失",
                          "根目录未配置/不存在：" + str(root or it.get("root", "")),
-                         it["expect"], it["script"]))
+                         total_expect, 0, it["script"]))
             continue
-        missing, partial = [], False
-        for rel in it["check"]:
+        missing, partial, actual = [], False, 0
+        for rel, exp in zip(it["check"], expect_list):
             p = os.path.join(root, rel)
             if not os.path.exists(p):
                 missing.append(rel)
-            elif it["expect"]:
-                try:
-                    if os.path.getsize(p) < it["expect"]:
-                        partial = True
-                except OSError:
-                    pass
+                continue
+            sz = path_size(p)
+            actual += sz
+            if exp and sz < exp:
+                partial = True
         if missing:
             note = "缺：" + "、".join(missing)
             if partial:
@@ -1284,8 +1289,40 @@ def deploy_inventory(cfg):
         else:
             status = "就绪"
             note = ""
-        rows.append((it["key"], it["name"], status, note, it["expect"], it["script"]))
+        rows.append((it["key"], it["name"], status, note, total_expect, actual, it["script"]))
     return rows
+
+
+def path_size(p):
+    """文件 → 自身字节数；目录 → 递归合计；不存在 → 0。
+
+    走 os.scandir 而不是 os.walk + getsize：实测 ComfyUI-Manager（14.8 MB / 上千文件）
+    只要 36 ms，15 项全量探测不到 100 ms，主线程直接算不会卡。
+    """
+    try:
+        if os.path.isfile(p):
+            return os.path.getsize(p)
+        if not os.path.isdir(p):
+            return 0
+    except OSError:
+        return 0
+    total = 0
+    stack = [p]
+    while stack:
+        cur = stack.pop()
+        try:
+            with os.scandir(cur) as entries:
+                for e in entries:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        else:
+                            total += e.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return total
 
 
 def _resolve_deploy_root(cfg, root):
@@ -1299,3 +1336,94 @@ def _resolve_deploy_root(cfg, root):
         return root
     val = cfg.get(root, "")
     return str(val) if val else ""
+
+
+# ================================================================ HF 单文件补下（P1）
+HF_ENDPOINT = (os.environ.get("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
+
+
+def _curl_exe():
+    """curl.exe 从 Win10 1803 起内置在 System32（curl.se 官方史已核）；优先用绝对路径。"""
+    p = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "curl.exe")
+    return p if os.path.isfile(p) else "curl.exe"
+
+
+def hf_pull(repo, path, dest_path, expect=None, on_progress=None):
+    """从 HF 镜像补下单个文件，返回 (ok, 最终大小, 说明)。
+
+    实测换来的三条选型（见 docs/交接-缺失下载部署.md）：
+      · 走 curl.exe，不用 huggingface_hub —— 后者在本机 10s 读超时假死，curl 快 75 倍；
+      · `-C -` 断点续传：中断重跑只补缺的部分，文件大小只增不减；
+      · 逐文件下、逐文件校验大小，不做整仓 snapshot。
+    `HF_PROXY` 环境变量可指定代理，`HF_PROXY=none` 强制直连（对齐 common.ps1 的 Get-HfProxy）。
+    """
+    path = path.replace("\\", "/")
+    dest_dir = os.path.dirname(dest_path)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+    if expect and os.path.exists(dest_path) and os.path.getsize(dest_path) >= expect:
+        return True, os.path.getsize(dest_path), "已存在且大小达标，跳过"
+
+    url = "%s/%s/resolve/main/%s" % (HF_ENDPOINT, repo, _url_quote(path))
+    cmd = [_curl_exe(), "-L", "--fail", "-C", "-",
+           "--retry", "8", "--retry-delay", "5", "--retry-all-errors",
+           "--connect-timeout", "30", "-o", dest_path]
+    proxy = (os.environ.get("HF_PROXY") or "").strip()
+    if proxy and proxy.lower() != "none":
+        cmd += ["-x", proxy]
+    cmd.append(url)
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            creationflags=NO_WINDOW)
+    last = -1
+    while proc.poll() is None:
+        time.sleep(1.0)
+        cur = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+        if on_progress and cur != last:
+            last = cur
+            try:
+                on_progress(cur, expect)
+            except Exception:
+                pass                       # 进度回调坏了不能拖垮下载
+    try:
+        tail = (proc.stdout.read() or b"").decode("utf-8", "replace").strip()
+    except Exception:
+        tail = ""
+    finally:
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+    size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+    if proc.returncode != 0:
+        return False, size, "curl 退出码 %s：%s" % (proc.returncode, _curl_tail(tail))
+    if expect and size < expect:
+        # 退出码 0 但没到期望大小：多半是镜像给的文件比预期短/中断在收尾，保留半成品再点一次可续传
+        return False, size, "大小不足：%s / %s（再点一次会断点续传）" % (
+            human_size(size), human_size(expect))
+    return True, size, "完成 %s" % human_size(size)
+
+
+def _curl_tail(tail):
+    """curl 把进度条也写在 stderr：去掉 `100 500k ...` 这类行，只留真正的错误。"""
+    keep = [ln.strip() for ln in tail.splitlines()
+            if ln.strip() and "--:--" not in ln and "%" not in ln]
+    return " | ".join(keep[-3:])[:200]
+
+
+def _url_quote(s):
+    from urllib.parse import quote
+    return quote(s, safe="/")
+
+
+def human_size(n):
+    """字节 → 人类可读。UI 与日志共用同一套口径，别各写一份。"""
+    if not n:
+        return "-"
+    gb = n / float(1024 ** 3)
+    if gb >= 1:
+        return "%.2f GB" % gb
+    mb = n / float(1024 ** 2)
+    if mb >= 1:
+        return "%.0f MB" % mb
+    return "%.0f KB" % (n / float(1024))
