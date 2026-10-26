@@ -2,6 +2,44 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.2.21 · 2026-10-26
+
+**修：MiniMax H3 图生视频「首帧不生效」—— 提示词不符合官方 I2VA 结构。**
+
+### 根因（查证自 MiniMax 官方仓库 + ComfyUI 源码 + 本机 ComfyUI `/history`）
+1. `workflows/MiniMax/MiniMax-H3-图生视频I2V.json` 的 prompt 与 T2V 那份**逐字节相同**
+   （1647 字符，全篇"雨后都市天台追逃"），既没有官方要求的首行对齐句，也没有三个核心字段。
+   MiniMax 官方指南 `skills/h3-prompt-writing/references/base-en.txt` §2.1 写明
+   「**I2VA always uses**：`For the target video, at 0.00 seconds into the target video,
+   <Picture 1> (from [Shot 1]) is fully referenced.`」，且必须是第一行、后空一行，
+   再接 `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music`。
+2. 启动器没有提示词入口（H3 卡只有一段"去网页调"的说明），只能吃 JSON 里的死提示词。
+3. 旁证：修复前 15:14 那次提交到 ComfyUI 的图是 **23 节点、无 LoadImage、`first_frame=None`**
+   —— 实际执行的根本是 T2V，用户看到的"图生视频"从来就不是图生视频。
+
+### 变更
+- `运行时.py` 新增 `build_i2v_prompt()` / `apply_prompt()` / `MM_PROMPT_DEFAULT`：
+  按官方结构自动补对齐句与缺失字段；已手写对齐句的不重复加、不覆盖正文（幂等）。
+  文生视频图**不加**对齐句（那是 I2VA 专用指令），且只在你改过默认值时才覆盖。
+- 启动器 MiniMax 卡加提示词输入框（切引擎不丢内容）+「恢复默认提示词」。
+- 输入选择器放开 `png/jpg/webp/bmp`：图生视频可直接给图片，不再只能给视频抽首帧。
+- `桥接资源.py`：`mm_i2v` 改指专用画布原件 `MiniMax-H3-图生视频I2V.json`
+  （LoadImage 已接进 `first_frame`，画布上能直接换图）；原件缺失时仍回落
+  T2V 通用画布 + `build_i2v_ui()` 运行期补节点。
+- 两份 MiniMax API 图的 `width/height` 接回 `115 ResolutionSelector`
+  —— 此前 115 是**孤儿节点**，画布上改比例对推送无效。
+- I2V API 图的内置提示词换成官方结构的默认文案（不装启动器、直接推 JSON 也是对的）。
+
+### 验证
+- 同一张首帧（1088×608 山谷）+ 新提示词实跑：输出**首帧与输入构图一致**，尾帧仍在同一场景
+  （云在动、镜头微推），不再跑飞。864×480 / 124 帧 / 5.17s / 带音轨，**135 秒**（turbo 8 步）。
+- 对照：修复前 250 秒（20 步、无 turbo）出的是完全无关的都市天台。
+
+### 注意
+- 提示词用**英文**写（官方：正文用英文，对白 / 画面文字保留原文）。
+- 首帧会被节点**硬拉伸**到画布尺寸（源码 `_resize(first_frame[:1], w, h, "disabled")`，
+  `last_frame` 反而是保持比例裁切），素材比例要跟画布比例对齐，否则会拉扁。
+
 ## v1.2.20 · 2026-10-14
 
 **修：工作流的成品会落到 ComfyUI 自带的 `output\`，而不是界面显示的「输出目录」。**

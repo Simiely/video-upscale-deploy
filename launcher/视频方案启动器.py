@@ -38,7 +38,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.2.20"                                 # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.2.21"                                 # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -626,6 +626,11 @@ class App(服务面板.服务面板):
             return None, warn
         if video and not n and not n2:
             self.log("[工作流] 图里没有可替换的载入节点，沿用图内原路径", "dim")
+        if wf is not None:
+            # v1.2.21：内置方案才覆盖提示词；「加载 .json」进来的图保留原作者的提示词
+            n3 = rt.apply_prompt(api, self._mm_prompt_text(), rt.MM_PROMPT_DEFAULT)
+            if n3:
+                self.log("[工作流] 提示词已按 MiniMax 官方 I2VA 结构写入", "dim")
         return api, why
 
     # ---- 引擎区（单卡，切换交给左导航）----
@@ -641,6 +646,13 @@ class App(服务面板.服务面板):
         meta = ENG[key]
         card = self.engine_card
         card.set_fill(CARD)
+        # v1.2.21：切引擎会重建整张卡，提示词是用户手写的，切走再切回不能丢
+        if getattr(self, "mm_prompt", None) is not None:
+            try:
+                self._mm_prompt_cache = self.mm_prompt.get("1.0", "end").strip()
+            except tk.TclError:
+                pass
+            self.mm_prompt = None
         for c in card.body.winfo_children():
             c.destroy()
         b = card.body
@@ -697,23 +709,48 @@ class App(服务面板.服务面板):
             self._run_btn = self._run_button(b, "运行放大", self.run_seedvr2, meta["color"])
             self._goto_wf(b)
         else:
-            tk.Label(b, text="H3 是「文生视频 + 音画同出」，参数要在网页工作流里调（提示词 / 帧数 / 步数）。\n"
-                             "启动器只负责把服务和网页拉起来，工作流在网页里搭。\n\n"
-                             "① 点下面按钮启动服务 → ② 浏览器打开后用模板库 Video → MiniMax H3 → T2V\n"
-                             "③ 首次验证参数建议 864×480 / 124 帧 / 20 步（本机实测 3 分 13 秒/条，带立体声）\n\n"
-                             "注意：显存峰值 15.2/16 GiB，跑 H3 时别开别的吃显存的程序。",
+            tk.Label(b, text="提示词按 MiniMax 官方 I2VA 结构写入（首行对齐句自动补），你只写「画面怎么动」。\n"
+                             "图生视频的输入取素材首帧（视频或图片都行）；帧数 / 步数仍在网页里调。",
                      bg=CARD, fg=TXT2, font=f(9), anchor="w", justify="left",
-                     wraplength=S(600)).pack(fill="x", pady=(0, S(12)))
+                     wraplength=S(600)).pack(fill="x", pady=(0, S(10)))
+            self._field_label(b, "提示词（英文 · 只写动作与运镜，别重复画面里已有的东西）")
+            self.mm_prompt = tk.Text(b, height=4, bg=CARD2, fg=TXT, font=f(9),
+                                     insertbackground=TXT, relief="flat", wrap="word",
+                                     highlightthickness=1, highlightbackground=BORDER,
+                                     highlightcolor=meta["color"], padx=S(7), pady=S(6))
+            self.mm_prompt.pack(fill="x", pady=(0, S(8)))
+            self.mm_prompt.insert("1.0", getattr(self, "_mm_prompt_cache", "")
+                                  or rt.MM_PROMPT_DEFAULT)
+            RButton(b, text="恢复默认提示词", command=self._reset_mm_prompt,
+                    fill=CARD2, fg=TXT, outer=CARD, font=f(9), pady=6).pack(fill="x",
+                                                                            pady=(0, S(10)))
             self._run_btn = self._run_button(b, "打开 ComfyUI 网页", self.open_web, meta["color"])
             self._goto_wf(b)
         self._schedule_top_sync()      # 引擎卡换了 → 上排高度需求跟着变
+
+    def _mm_prompt_text(self):
+        """当前提示词（卡片重建过就读缓存，保证切引擎不丢）。"""
+        w = getattr(self, "mm_prompt", None)
+        if w is not None:
+            try:
+                return w.get("1.0", "end").strip()
+            except tk.TclError:
+                return ""
+        return getattr(self, "_mm_prompt_cache", "")
+
+    def _reset_mm_prompt(self):
+        w = getattr(self, "mm_prompt", None)
+        if w is None:
+            return
+        w.delete("1.0", "end")
+        w.insert("1.0", rt.MM_PROMPT_DEFAULT)
 
     def _field_label(self, parent, text):
         tk.Label(parent, text=text, bg=parent["bg"], fg=TXT2, font=f(8), anchor="w").pack(
             fill="x", pady=(0, S(5)))
 
     def _fields_input(self, parent):
-        self._field_label(parent, "输入（视频文件或整个文件夹）")
+        self._field_label(parent, "输入（视频 / 图片 / 整个文件夹）")
         row = tk.Frame(parent, bg=CARD)
         row.pack(fill="x", pady=(0, S(12)))
         self.in_var = tk.StringVar()
@@ -922,7 +959,10 @@ class App(服务面板.服务面板):
         if is_file:
             p = filedialog.askopenfilename(
                 initialdir=CONFIG["input_dir"],
-                filetypes=[("视频", "*.mp4 *.avi *.mov *.mkv *.webm *.flv *.wmv"),
+                filetypes=[("视频 / 图片", "*.mp4 *.avi *.mov *.mkv *.webm *.flv *.wmv "
+                                          "*.png *.jpg *.jpeg *.webp *.bmp"),
+                           ("视频", "*.mp4 *.avi *.mov *.mkv *.webm *.flv *.wmv"),
+                           ("图片", "*.png *.jpg *.jpeg *.webp *.bmp"),
                            ("所有文件", "*.*")])
         else:
             p = filedialog.askdirectory(initialdir=CONFIG["input_dir"])

@@ -86,7 +86,9 @@ WF_UI_SOURCES = {
     "sv_std": "SeedVR2-放大1080p-标准.json",
     "sv_max": None,        # 2160 是补绑时改的参数，没有现成 UI 原件
     "mm_t2v": "MiniMax-H3-文生视频T2V.json",
-    "mm_i2v": "MiniMax-H3-文生视频T2V.json",   # 通用画布，载入时补 LoadImage 接 first_frame
+    # v1.2.21：I2V 单独一份画布原件（LoadImage 已接进 first_frame，画布上能直接调图）。
+    # 这份原件缺失时才回落到 T2V 通用画布 + 运行期补 LoadImage（运行时.load_to_comfy）。
+    "mm_i2v": "MiniMax-H3-图生视频I2V.json",
 }
 
 
