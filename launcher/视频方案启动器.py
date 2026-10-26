@@ -22,6 +22,7 @@ import queue
 import sys
 import subprocess
 import threading
+import time
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
@@ -40,7 +41,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.2.27"                                 # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.2.28"                                 # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -1120,7 +1121,8 @@ class App(服务面板.服务面板):
             return
         self._deploy_running = True
         self._deploy_pct = -10
-        self.log("[部署] 开始下载：%s ← %s" % (item["name"], item["hf"]), "hi")
+        self._deploy_mark = (time.time(), 0)
+        self.log("[部署] 开始下载：%s ← %s（优先 ModelScope，分段并行）" % (item["name"], item["hf"]), "hi")
         threading.Thread(target=self._run_deploy_download, args=(item, root),
                         daemon=True).start()
 
@@ -1129,13 +1131,14 @@ class App(服务面板.服务面板):
         files = list(item["check"])
         paths = dl.hf_paths_of(item)
         exps = dl.expects_of(item)
+        shas = dl.sha256_of(item)
         try:
-            for rel, hf_path, exp in zip(files, paths, exps):
+            for rel, hf_path, exp, sha in zip(files, paths, exps, shas):
                 dest = os.path.join(root, rel.replace("/", os.sep))
                 self.log("[部署] 下载 %s（%s）" % (hf_path, rt.human_size(exp) if exp else "大小未知"),
                          "dim")
                 ok, size, msg = rt.hf_pull(
-                    item["hf"], hf_path, dest, expect=exp,
+                    item["hf"], hf_path, dest, expect=exp, sha256=sha,
                     on_progress=lambda cur, tot, n=item["name"]: self._deploy_progress(n, cur, tot))
                 if not ok:
                     self.log("[部署] %s 失败：%s" % (hf_path, msg), "err")
@@ -1151,14 +1154,22 @@ class App(服务面板.服务面板):
             self.root.after(0, lambda: self._refresh_deploy(verbose=True))
 
     def _deploy_progress(self, name, cur, total):
-        """下载进度：每 10% 打一行（20GB 逐 MB 刷会淹掉日志窗）。"""
+        """下载进度：每 10% 打一行，带瞬时速度（20GB 逐 MB 刷会淹掉日志窗）。"""
         if not total:
             return
+        now = time.time()
+        prev_t, prev_b = getattr(self, "_deploy_mark", (now, cur))
+        self._deploy_mark = (now, cur)
+        speed = ""
+        if now - prev_t > 0:
+            mbps = (cur - prev_b) / 1048576.0 / (now - prev_t)
+            if mbps > 0.05:
+                speed = "，%.1f MB/s" % mbps
         pct = min(100, int(cur * 100 / total))
         if pct >= 100 or pct - self._deploy_pct >= 10:
             self._deploy_pct = pct
-            self.log("[部署] %s 下载中 %d%%（%s / %s）"
-                     % (name, pct, rt.human_size(cur), rt.human_size(total)), "dim")
+            self.log("[部署] %s 下载中 %d%%（%s / %s%s）"
+                     % (name, pct, rt.human_size(cur), rt.human_size(total), speed), "dim")
 
     # ---- 服务卡（中栏顶部，常显）----
     def _build_service_card(self, parent):

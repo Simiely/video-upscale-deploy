@@ -91,20 +91,25 @@ DEPLOY_ITEMS = (
     dict(key="w_h3_dit", group="h3", name="H3 扩散模型", root="comfy_dir",
          check=("models/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",),
          expect=20970379616, hf="Comfy-Org/MiniMax-H3",
+         sha256=("e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a",),
          script="", desc="Comfy-Org/MiniMax-H3 · 20.97 GB"),
     dict(key="w_h3_te", group="h3", name="H3 文本编码器", root="comfy_dir",
          check=("models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",),
          expect=15687142551, hf="Comfy-Org/MiniMax-H3",
+         sha256=("35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6",),
          script="", desc="Comfy-Org/MiniMax-H3 · 15.69 GB"),
     dict(key="w_h3_vae", group="h3", name="H3 双 VAE", root="comfy_dir",
          check=("models/vae/minimax_h3_video_vae_int8_convrot.safetensors",
                 "models/vae/minimax_h3_audio_vae_fp32.safetensors"),
          expect=(2811065184, 605254808),          # 逐文件期望值（与 check 一一对应）
          hf="Comfy-Org/MiniMax-H3", script="",
+         sha256=("52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e",
+                 "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"),
          desc="Comfy-Org/MiniMax-H3 · 2.62 + 0.56 GB"),
     dict(key="w_h3_lora", group="h3", name="H3 turbo LoRA", root="comfy_dir",
          check=("models/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",),
          expect=1956193000, hf="Comfy-Org/MiniMax-H3",
+         sha256=("2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e",),
          script="", desc="MiniMax-H3 · 1.82 GB"),
 )
 
@@ -144,6 +149,16 @@ def expects_of(item):
         vals = list(exp) + [None] * (n - len(exp))
         return vals[:n]
     return [exp] * n
+
+
+def sha256_of(item):
+    """与 check 一一对应的 sha256 列表（没写就是 None）。下载完用它做完整性校验。"""
+    n = len(item["check"])
+    vals = item.get("sha256")
+    if isinstance(vals, (list, tuple)):
+        out = list(vals) + [None] * (n - len(vals))
+        return out[:n]
+    return [vals] * n
 
 
 def hf_paths_of(item):

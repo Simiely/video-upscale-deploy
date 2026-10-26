@@ -10,6 +10,7 @@
 
 依赖单向：本模块只用标准库，**不 import 业务代码，也不 import ui_kit**。
 """
+import hashlib
 import json
 import os
 import re
@@ -1338,8 +1339,15 @@ def _resolve_deploy_root(cfg, root):
     return str(val) if val else ""
 
 
-# ================================================================ HF 单文件补下（P1）
+# ================================================================ 模型文件补下（P1/P2）
+# 源优先级（2026-10-26 实测，同一文件 vae/minimax_h3_video_vae_int8_convrot.safetensors）：
+#   · ModelScope 单连接 **15.4 MB/s**（国内 CDN）
+#   · hf-mirror 单连接 **0.47 MB/s**，8 连接并行才 2.1 MB/s
+#   · 本地 Clash 代理直连 huggingface 更差（0.56 MB/s / 4 连接 0.76 MB/s）
+# 两家同一个模型的文件**字节数完全一致**（20970379616 / 1956193000 / 15687142551 /
+# 605254808 / 2811065184 逐项核对过），所以可以按"先 ModelScope、失败再 hf-mirror"来下。
 HF_ENDPOINT = (os.environ.get("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
+MS_ENDPOINT = (os.environ.get("MS_ENDPOINT") or "https://modelscope.cn").rstrip("/")
 
 
 def _curl_exe():
@@ -1348,27 +1356,206 @@ def _curl_exe():
     return p if os.path.isfile(p) else "curl.exe"
 
 
-def hf_pull(repo, path, dest_path, expect=None, on_progress=None):
-    """从 HF 镜像补下单个文件，返回 (ok, 最终大小, 说明)。
+def hf_sources(repo, path):
+    """按优先级给候选源：[(名字, url), ...]。
 
-    实测换来的三条选型（见 docs/交接-缺失下载部署.md）：
-      · 走 curl.exe，不用 huggingface_hub —— 后者在本机 10s 读超时假死，curl 快 75 倍；
-      · `-C -` 断点续传：中断重跑只补缺的部分，文件大小只增不减；
-      · 逐文件下、逐文件校验大小，不做整仓 snapshot。
-    `HF_PROXY` 环境变量可指定代理，`HF_PROXY=none` 强制直连（对齐 common.ps1 的 Get-HfProxy）。
+    `HF_SOURCE=ms|hf` 可强制走某一家（排查用）。
+    """
+    quoted = _url_quote(path)
+    ms = "%s/api/v1/models/%s/repo?Revision=master&FilePath=%s" % (MS_ENDPOINT, repo, quoted)
+    hf = "%s/%s/resolve/main/%s" % (HF_ENDPOINT, repo, quoted)
+    force = (os.environ.get("HF_SOURCE") or "auto").strip().lower()
+    if force == "ms":
+        return [("ModelScope", ms)]
+    if force == "hf":
+        return [("hf-mirror", hf)]
+    return [("ModelScope", ms), ("hf-mirror", hf)]
+
+
+def _probe_total(url, timeout=12):
+    """取文件总字节数：Range 0-0 读 Content-Range 的尾部。失败返回 0。
+
+    不用 `curl -w`（本机实测带 `-w` 会假失败：exit 43 + http_code 000），只看响应头。
+    """
+    try:
+        r = subprocess.run([_curl_exe(), "-sL", "--fail", "-r", "0-0", "-D", "-",
+                            "--max-time", str(timeout), "-o", os.devnull, url],
+                           capture_output=True, text=True, errors="replace",
+                           creationflags=NO_WINDOW)
+    except Exception:
+        return 0
+    total = 0
+    for line in (r.stdout or "").splitlines():
+        low = line.lower()
+        if low.startswith("content-range:") and "/" in low:
+            tail = low.rsplit("/", 1)[-1].strip()
+            if tail.isdigit():
+                total = int(tail)      # 多级重定向时取最后一个
+    return total
+
+
+def hf_pull(repo, path, dest_path, expect=None, on_progress=None, sha256=None):
+    """补下单个文件，返回 (ok, 最终大小, 说明)。
+
+    实测选型（2026-10-26，同一文件 vs 本地 200M 宽带）：
+      · 源：ModelScope 单连接 15 MB/s（峰值 50+）vs hf-mirror 0.43 MB/s —— 差 35 倍，**优先 ModelScope**；
+      · 传输：大文件走**分段并行**（`HF_CONNECTIONS`，默认 8）。CDN 单连接会"先快后限速"
+        （实测从 50 MB/s 掉到 11 MB/s），多连接能把每段的限速绕开；
+      · 断点续传：已有单连接半成品就继续单连接补（不换源、不改分段，避免拼接坏文件）；
+        分段下载的续传粒度是"每个 part 文件自己的大小"。
     """
     path = path.replace("\\", "/")
     dest_dir = os.path.dirname(dest_path)
     if dest_dir:
         os.makedirs(dest_dir, exist_ok=True)
     if expect and os.path.exists(dest_path) and os.path.getsize(dest_path) >= expect:
-        return True, os.path.getsize(dest_path), "已存在且大小达标，跳过"
+        if not sha256:
+            return True, os.path.getsize(dest_path), "已存在且大小达标，跳过"
+        if _sha256_file(dest_path).lower() == sha256.lower():
+            return True, os.path.getsize(dest_path), "已存在且校验通过，跳过"
+        _quarantine(dest_path)          # 大小对但校验不过 = 之前拼坏的残件，改名别再续传
 
-    url = "%s/%s/resolve/main/%s" % (HF_ENDPOINT, repo, _url_quote(path))
+    try:
+        segments = int(os.environ.get("HF_CONNECTIONS", "8") or 8)
+    except ValueError:
+        segments = 8
+    proxy = (os.environ.get("HF_PROXY") or "").strip()
+
+    last = "无可用下载源"
+    for name, url in hf_sources(repo, path):
+        total = _probe_total(url)
+        if not total:
+            last = "%s 探测失败（文件不存在或无响应）" % name
+            continue
+        if expect and total != expect:
+            last = "%s 大小不符：远端 %s ≠ 期望 %s" % (
+                name, human_size(total), human_size(expect))
+            continue
+        if segments > 1 and total > 64 * 1024 * 1024:
+            ok, size, msg = _parallel_download(url, dest_path, total, segments,
+                                               on_progress, proxy)
+        else:
+            ok, size, msg = _curl_download(url, dest_path, total, on_progress, proxy)
+        if ok:
+            if not sha256:
+                return True, size, "%s · %s" % (name, msg)
+            got = _sha256_file(dest_path)
+            if got.lower() == sha256.lower():
+                return True, size, "%s · %s · sha256 校验通过" % (name, msg)
+            _quarantine(dest_path)
+            return False, size, "%s · 校验失败（%s… ≠ %s…），已改名 .bad，请重下" % (
+                name, got[:12], sha256[:12])
+        last = "%s：%s" % (name, msg)
+        if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
+            return False, os.path.getsize(dest_path), last   # 已有半成品，别换源拼接
+        if os.path.isdir(dest_path + ".parts"):
+            break                                            # 分段有进度，也别换源
+    return False, (os.path.getsize(dest_path) if os.path.exists(dest_path) else 0), last
+
+
+def _parallel_download(url, dest_path, total, segments, on_progress, proxy=""):
+    """分段并行下载：把 [已有字节, total) 切成 N 段，每段一个 curl Range，
+    写 `<dest>.parts/partNN`，全部凑齐后顺序追加到目标文件。
+
+    两个关键设计：
+      · **续传粒度 = 每个 part 自己的大小**。curl 自带的 `-C -` 偏移是相对整份文件的，
+        跟 `-r a-b` 的分段起点冲突，所以这里自己算偏移、用追加写（stdout → ab 文件句柄）。
+      · **已有半成品能接着用**：dest 已存在 S 字节时，只对 [S, total) 切段，最后追加即可——
+        这样"单连接爬到一半卡住"的文件也能直接转成分段并行收尾。
+    """
+    part_dir = dest_path + ".parts"
+    os.makedirs(part_dir, exist_ok=True)
+    base = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+    if base >= total:
+        return True, base, "完成 %s（已存在）" % human_size(base)
+    span = total - base
+    seg = span // segments
+    if seg <= 0:
+        return False, base, "剩余数据太少，不值得分段"
+    plan = []
+    for i in range(segments):
+        start = base + i * seg
+        end = total - 1 if i == segments - 1 else (base + (i + 1) * seg - 1)
+        plan.append((start, end, os.path.join(part_dir, "part%02d" % i)))
+
+    def done_bytes():
+        n = base
+        for _s, _e, p in plan:
+            if os.path.exists(p):
+                n += min(os.path.getsize(p), _e - _s + 1)
+        return n
+
+    procs = []
+    for start, end, part in plan:
+        got = os.path.getsize(part) if os.path.exists(part) else 0
+        seg_len = end - start + 1
+        if got >= seg_len:
+            continue
+        cmd = [_curl_exe(), "-sL", "--fail",
+               "--retry", "8", "--retry-delay", "5", "--retry-all-errors",
+               "--connect-timeout", "30",
+               "-r", "%d-%d" % (start + got, end), url]
+        if proxy and proxy.lower() != "none":
+            cmd += ["-x", proxy]
+        fh = open(part, "ab")
+        procs.append((subprocess.Popen(cmd, stdout=fh, stderr=subprocess.PIPE,
+                                      creationflags=NO_WINDOW), fh))
+
+    last = -1
+    while any(p.poll() is None for p, _f in procs):
+        time.sleep(1.0)
+        cur = done_bytes()
+        if on_progress and cur != last:
+            last = cur
+            try:
+                on_progress(cur, total)
+            except Exception:
+                pass
+    for p, fh in procs:
+        try:
+            fh.close()
+        except Exception:
+            pass
+    for start, end, part in plan:            # 段大小不对（服务器忽略 Range）就别往下走
+        want = end - start + 1
+        got = os.path.getsize(part) if os.path.exists(part) else 0
+        if got != want:
+            return False, done_bytes(), "分段不完整（%s：%d/%d B）" % (
+                os.path.basename(part), got, want)
+
+    with open(dest_path, "ab") as out:
+        for _s, _e, part in plan:
+            with open(part, "rb") as f:
+                shutil.copyfileobj(f, out, 1 << 20)
+    size = os.path.getsize(dest_path)
+    if size != total:
+        return False, size, "合并后大小不符：%s / %s" % (human_size(size), human_size(total))
+    shutil.rmtree(part_dir, ignore_errors=True)
+    return True, size, "分段并行 %d 路 · 完成 %s" % (len(plan), human_size(size))
+
+
+def _sha256_file(path):
+    """整文件 sha256。20 GB 全量哈希约 1 分钟（本地 NVMe 实测 ~350 MB/s），只在下载完成后跑一次。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _quarantine(path):
+    """校验失败的残件改名，别让它被下次"续传"当成正常前缀接着拼。"""
+    try:
+        os.replace(path, path + ".bad")
+    except OSError:
+        pass
+
+
+def _curl_download(url, dest_path, total, on_progress, proxy=""):
+    """跑一次 curl 下载（支持续传），每秒回报进度。返回 (ok, 大小, 说明)。"""
     cmd = [_curl_exe(), "-L", "--fail", "-C", "-",
            "--retry", "8", "--retry-delay", "5", "--retry-all-errors",
            "--connect-timeout", "30", "-o", dest_path]
-    proxy = (os.environ.get("HF_PROXY") or "").strip()
     if proxy and proxy.lower() != "none":
         cmd += ["-x", proxy]
     cmd.append(url)
@@ -1382,7 +1569,7 @@ def hf_pull(repo, path, dest_path, expect=None, on_progress=None):
         if on_progress and cur != last:
             last = cur
             try:
-                on_progress(cur, expect)
+                on_progress(cur, total)
             except Exception:
                 pass                       # 进度回调坏了不能拖垮下载
     try:
@@ -1397,10 +1584,9 @@ def hf_pull(repo, path, dest_path, expect=None, on_progress=None):
     size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
     if proc.returncode != 0:
         return False, size, "curl 退出码 %s：%s" % (proc.returncode, _curl_tail(tail))
-    if expect and size < expect:
-        # 退出码 0 但没到期望大小：多半是镜像给的文件比预期短/中断在收尾，保留半成品再点一次可续传
+    if total and size < total:
         return False, size, "大小不足：%s / %s（再点一次会断点续传）" % (
-            human_size(size), human_size(expect))
+            human_size(size), human_size(total))
     return True, size, "完成 %s" % human_size(size)
 
 
