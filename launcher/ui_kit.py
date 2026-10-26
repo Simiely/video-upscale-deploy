@@ -609,6 +609,40 @@ def ask_text(parent, title, value="", *, hint="", browse=None):
     return got["v"]
 
 
+def wrap_at_separators(text, max_px, font_spec):
+    """按路径分隔符折行，避免把文件名从中间切断。
+
+    Tk 的 wraplength 只在**空格**处断词；一长串路径没有空格，它就会从任意字符处
+    硬断 —— 实测 `C:\\AI\\ComfyUI\\.venv\\Scripts\\python.exe` 被切成
+    `…\\Scripts\\py` + `thon.exe`，看起来就像"被裁掉一截"（v1.2.22 修）。
+    这里先按 `\\` `/` `_` 切开再逐段拼接，量不到就换行，保证断点总在分隔符之后。
+    """
+    try:
+        fm = tkfont.Font(font=font_spec)
+    except tk.TclError:
+        return text
+    if fm.measure(text) <= max_px:
+        return text
+    parts, buf = [], ""
+    for ch in text:                       # 手工切：分隔符留在段尾
+        buf += ch
+        if ch in "\\/_":
+            parts.append(buf)
+            buf = ""
+    if buf:
+        parts.append(buf)
+    out, cur = [], ""
+    for seg in parts:
+        if cur and fm.measure(cur + seg) > max_px:
+            out.append(cur)
+            cur = seg
+        else:
+            cur += seg
+    if cur:
+        out.append(cur)
+    return "\n".join(out)
+
+
 class SettingsList(tk.Frame):
     """左栏窄栏用的设置项列表：每项两行（标签行 + 值行），每项都能打开、都能改。
 
@@ -647,9 +681,16 @@ class SettingsList(tk.Frame):
 
         line = tk.Frame(self, bg=self._outer)
         line.pack(fill="x")
-        lab = tk.Label(line, text=it["value"] + ("" if not note else "  ⚠️ " + note),
+        # 左栏可用宽 ≈ 206 - 卡片内边距。v1.2.22：以前写死 S(168)，比可用宽窄 30~40px，
+        # 长路径被提前折断、还断在单词中间（…\Scripts\py + thon.exe）。改成按可用宽量着折、
+        # 只在 \ / _ 之后断 —— 断点落在分隔符上，看起来才是"换行"而不是"被裁"。
+        budget = S(190)
+        shown = wrap_at_separators(it["value"], budget, f(8))
+        if note:
+            shown += "  ⚠️ " + note
+        lab = tk.Label(line, text=shown,
                        bg=self._outer, fg=(AMBER if note else TXT), font=f(8), anchor="w",
-                       justify="left", wraplength=S(168), cursor="hand2")
+                       justify="left", wraplength=budget + S(8), cursor="hand2")
         lab.pack(side="left", fill="x", expand=True)
         lab.bind("<Button-1>", lambda e, k=it["key"]: self._edit(k))
         lab.bind("<Enter>", lambda e, w=lab: w.configure(fg=BLUE))
@@ -685,7 +726,7 @@ _INNER = "#1c202a"      # 卡片里的"内嵌面板"底色（比 CARD 深一档�
 
 # 详情盒固定高度：实测六套内置方案最大 320（fv_4x / sv_max / mm_i2v），+16 冗余。
 # 两个分支（未选择 / 选中）都用同一个固定盒 —— 右栏需求恒定，上排高度才定得下来（v1.2.12）。
-WF_DETAIL_H = S(336)
+WF_DETAIL_H = S(336)          # 详情盒**起始**高度（v1.2.22 起会按内容只增不减地长高）
 
 
 class WorkflowDetail(tk.Frame):
@@ -760,8 +801,10 @@ class WorkflowDetail(tk.Frame):
         tk.Label(head, text=name, bg=_INNER, fg=TXT, font=f(10, True), anchor="w",
                  justify="left", wraplength=S(200)).pack(side="left", fill="x", expand=True)
 
+        # v1.2.22：wraplength 从 S(250) 放到 S(300) —— 右栏固定 S(360)，内层可用约 312px，
+        # 原来窄了 60px，一句 261px 的描述被提前折行，末尾「。」孤零零占一行（看起来像被裁掉）。
         tk.Label(pad, text=desc, bg=_INNER, fg=TXT2, font=f(9), anchor="w",
-                 justify="left", wraplength=S(250)).pack(fill="x", pady=(S(8), S(4)))
+                 justify="left", wraplength=S(300)).pack(fill="x", pady=(S(8), S(4)))
 
         steps_box = tk.Frame(pad, bg=_INNER)
         steps_box.pack(fill="x")
@@ -781,7 +824,7 @@ class WorkflowDetail(tk.Frame):
         meta_row.columnconfigure(0, weight=1)
         meta_row.columnconfigure(1, weight=1)
         for i, (lab, val) in enumerate((("节点", str(n)), ("输入", inN),
-                                        ("输出", outN), ("目标", "ComfyUI :8188"))):
+                                        ("输出", outN), ("目标", "ComfyUI:8188"))):
             cell = tk.Frame(meta_row, bg=_INNER)
             cell.grid(row=i // 2, column=i % 2, sticky="w", pady=S(2))
             tk.Label(cell, text=lab + " ", bg=_INNER, fg=TXT2, font=f(8)).pack(side="left")
@@ -811,6 +854,15 @@ class WorkflowDetail(tk.Frame):
                                                           pady=(S(6), 0))
         else:
             load_btn.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(S(6), 0))
+
+        # v1.2.22：盒子高度按内容长，**只增不减**。
+        # 原来写死 WF_DETAIL_H=336，「SeedVR2 · 极致 2160」实测要 367px → 第三行按钮被切掉，
+        # 只剩一条上边框露在盒底（用户报的"UI 有被裁切的部分"就是这个）。
+        # 只增不减：切回矮方案时不收缩，上排高度不会跟着来回跳（这正是当初写死的原因）。
+        self.update_idletasks()
+        need = inner.winfo_reqheight() + 2          # 上下边框各 1px
+        if need > int(box.cget("height")):
+            box.configure(height=need)
         self._changed()
 
     def _push(self, to_queue):
