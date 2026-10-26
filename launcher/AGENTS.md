@@ -47,7 +47,7 @@
 - **量尺寸前先跑 idle**（v1.2.5）：Tk 几何计算是 idle 任务，刚 `pack` 完读 `winfo_reqheight()` 拿到的是**旧值**（实测 263 vs 500）。任何"按需求高度自适应"的实测前必须 `update_idletasks()`，并加标志防重入。
 - **算容器需求别手数 pady**（v1.2.5）：用 `子控件.winfo_rooty() − 容器.winfo_rooty() + 子控件.winfo_reqheight()` 取最大值；手写 `A + S(14) + B` 实测漏算过 14px。
 - **ffmpeg 不靠注册表**：`_comfy_env()` 把 `ffmpeg_dir` 显式前置到子进程 `PATH`；本机实测出现过「父进程改了 PATH 但传不到子进程」。
-- **H3 参数在网页里调**：启动器只负责把服务与网页拉起来，工作流（提示词 / 帧数 / 步数）在 ComfyUI 里自己搭。
+- **H3 提示词由启动器按官方 I2VA 结构写入**（v1.2.21 起）：H3 卡有提示词输入框，用户只写"画面怎么动"，`运行时.build_i2v_prompt` 自动补首行对齐句 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` 三字段。**对齐句逐字取自 MiniMax 官方仓库 `skills/h3-prompt-writing/references/base-en.txt` §2.1（`I2VA always uses`），别手改、别省 `<Picture 1>`**。帧数 / 步数仍在网页里调。
 - **自绘控件的颜色参数要归一化**：Tk 不认 CSS 的 `"transparent"`，写进 `outline` 会抛 `unknown color name`。
 - **一行里固定元素先 `pack`**：顶栏「按钮组 + 弹性 URL」必须先给按钮组分配空间，否则窄窗口会把按钮挤出卡片。
 - **像素走 `S()`、字号走 `f()`**：`ui_kit.S()` 按 DPI 缩放像素，字号用磅值交给 Tk 缩放，两者才同比例。
