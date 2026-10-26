@@ -24,18 +24,24 @@
 - `视频方案启动器`：`_deploy_action` 增加第三类动作「恢复」（优先级：安装 > 恢复 > 下载）；
   `_restore_deploy` / `_run_deploy_restore` 后台执行，完成后自动 `_refresh_deploy` + `_rescan_wf_dir`（工作流下拉立刻刷新）。
 
-### 验证（本机端到端）
-- 初始：`workflows` 项「缺失」，说明列出 14 个待铺文件。
-- 点「恢复」→ **新复制 11 个 / 已存在跳过 3 个** → 复测「就绪」，实际占用 **33 KB**；
-  `scan_workflows` 扫到 **14 个**工作流。
-- 再点一次 → **0 复制 / 14 跳过**（幂等，符合 AGENTS「重跑不重下」的约定）。
+### 验证（本机端到端，最终口径）
+- 以 GitHub `main` 的 git tree API 为准：`workflows/` 下 **11 个 json**；逐个比对 git blob sha ——
+  本地快照 **11/11 一致**、部署目录 **11/11 一致**，内容确实是最新的。
+- 初始：`workflows` 项「缺失」。
+- 点「恢复」→ 铺进 `{comfy_dir}/user/default/workflows` → 复测「就绪」，实际占用 **29 KB**；
+  `scan_workflows` 扫到 **11 个**，与仓库一一对应。
+- 再点一次 → **0 复制 / 11 跳过**（幂等，符合 AGENTS「重跑不重下」的约定）。
 - 清单整体：**就绪 15 / 16**，只剩 Video2X 未装。
 
-### 附带修掉的一个部署漂移
-部署根 `C:\AI\video-upscale-deploy\workflows` 只有 3 个旧 json（`*-12G-*`），
-缺启动器内置方案引用的 4 个（`SeedVR2-放大1080p-标准`、`SeedVR2-放大2160p-4K极致`、
-`MiniMax-H3-文生视频T2V`、`MiniMax-H3-图生视频I2V`）—— 只从部署根恢复是**恢复不全**的。
-已把仓库 `workflows/` 的 11 个 json 同步进部署根（`cp -n`，不覆盖已有），部署根现有 14 个。
+### 附带修掉的一个部署漂移（这才是「数据不是最新」的真相）
+部署根 `C:\AI\video-upscale-deploy\workflows` 原本只有 **3 个仓库里根本不存在的旧文件**
+（`FlashVSR-12G-无音轨素材` / `FlashVSR-12G-有声素材` / `SeedVR2-12G-1080p`，来自更早的部署），
+而内置方案引用的 4 个（`SeedVR2-放大1080p-标准`、`SeedVR2-放大2160p-4K极致`、
+`MiniMax-H3-文生视频T2V`、`MiniMax-H3-图生视频I2V`）一个都没有。
+
+处理：先把仓库的 11 个 json 同步进部署根，再把那 3 个非仓库文件**移出**到 `_legacy_workflows/`（不删除）；
+ComfyUI 工作流目录里同名的 3 个也一并移到 `user/default/_legacy_workflows/`，避免下拉里混着来历不明的条目。
+现在两边都是干净的 11 个。
 
 ## v1.2.28 · 2026-10-26
 
