@@ -22,6 +22,7 @@ import traceback
 import urllib.request
 import webbrowser
 
+from 部署清单 import DEPLOY_ITEMS  # 缺失部署清单（纯数据模块）
 from 提示词 import (I2V_ALIGN, MM_FIELDS, MM_PROMPT_DEFAULT, MM_SOUND_FALLBACK,
                 apply_prompt, build_i2v_prompt)
 from 桥接资源 import (BRIDGE_INIT, BRIDGE_JS, WF_UI_SOURCES,      # 纯数据模块
@@ -1239,3 +1240,62 @@ WORKFLOWS = [
                ("VAEDecode", ""), ("SaveVideo", "output_dir")],
      "inN": "1 × LoadImage", "outN": "1 × SaveVideo"},
 ]
+
+
+# ================================================================ 缺失部署清单
+def deploy_inventory(cfg):
+    """探测 部署清单.DEPLOY_ITEMS 的每一项，返回探测结果。
+
+    返回：list of (key, 名称, 状态, 说明, 期望大小, 脚本)
+      状态 ∈ {"就绪", "缺失", "不完整"}
+        · 就绪       ：root 下 check 文件全部存在，且（若有期望大小）大小达标
+        · 不完整     ：文件存在但某文件大小 < 期望（"下了一半"），或根存在但 check 全缺且部分残存
+        · 缺失       ：根未配置/不存在，或 check 文件不全
+     判定 = 文件存在 + 大小校验，能发现"下载到一半"的残件。
+    脚本为空串表示暂无一键安装脚本（安装按钮应置灰）。
+    """
+    rows = []
+    for it in DEPLOY_ITEMS:
+        root = _resolve_deploy_root(cfg, it.get("root", "comfy_dir"))
+        if not root or not os.path.isdir(root):
+            rows.append((it["key"], it["name"], "缺失",
+                         "根目录未配置/不存在：" + str(root or it.get("root", "")),
+                         it["expect"], it["script"]))
+            continue
+        missing, partial = [], False
+        for rel in it["check"]:
+            p = os.path.join(root, rel)
+            if not os.path.exists(p):
+                missing.append(rel)
+            elif it["expect"]:
+                try:
+                    if os.path.getsize(p) < it["expect"]:
+                        partial = True
+                except OSError:
+                    pass
+        if missing:
+            note = "缺：" + "、".join(missing)
+            if partial:
+                note += "；且部分文件大小不足（可能下了一半）"
+            status = "不完整" if partial else "缺失"
+        elif partial:
+            status = "不完整"
+            note = "文件存在但大小不足（可能下了一半）"
+        else:
+            status = "就绪"
+            note = ""
+        rows.append((it["key"], it["name"], status, note, it["expect"], it["script"]))
+    return rows
+
+
+def _resolve_deploy_root(cfg, root):
+    """把 部署清单 的 root 字段解析成实际目录。
+
+    root 可能是：配置键名（"comfy_dir"/"ffmpeg_dir"，取 cfg 值）或绝对路径（如 Video2X 的 C:\\AI\\Video2X）。
+    """
+    if not root:
+        return ""
+    if os.path.isabs(root):
+        return root
+    val = cfg.get(root, "")
+    return str(val) if val else ""

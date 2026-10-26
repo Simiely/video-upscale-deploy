@@ -20,6 +20,7 @@ import json
 import os
 import queue
 import sys
+import subprocess
 import threading
 
 import tkinter as tk
@@ -295,6 +296,7 @@ class App(服务面板.服务面板):
 
         tk.Frame(b, height=1, bg=BORDER).pack(fill="x", pady=S(12), padx=S(6))
         self._build_settings_section(b)      # 设置常驻左栏下方，不再点导航到中栏刷出
+        self._build_deploy_card(b)        # 缺失与部署卡（P0：探测 + 一键安装）
 
     # ---- 中：滚动舞台（引擎区）----
     def _build_center(self, parent):
@@ -824,6 +826,106 @@ class App(服务面板.服务面板):
         self.settings.set_items(rt.config_items(CONFIG))
         self._schedule_top_sync()
         return None
+
+    # ---- 缺失与部署卡（左栏设置区下方，P0）----
+    def _build_deploy_card(self, parent):
+        """缺失部署清单卡（docs/交接-缺失下载部署.md P0）：探测约 15 项部署件，
+        逐项显示 就绪(灰)/缺失(红)/不完整(琥珀)，带脚本的项给「安装」按钮；
+        点一下后台跑安装脚本，日志流进统一日志窗（沿用 服务面板 的 self.log 管道）。
+        """
+        tk.Label(parent, text="缺失与部署", bg=CARD, fg=TXT2, font=f(9), anchor="w").pack(
+            fill="x", padx=S(2), pady=(S(12), S(2)))
+        card = RoundedFrame(parent, outer=BG, pad=(6, 6))
+        card.pack(fill="x")
+        b = card.body
+        # 头部：刷新按钮
+        head = tk.Frame(b, bg=CARD)
+        head.pack(fill="x")
+        RButton(head, text="刷新", command=self._refresh_deploy,
+                fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=2,
+                stretch=True).pack(side="right", padx=(S(6), 0))
+        # 滚动列表
+        cv = tk.Canvas(b, bg=CARD, highlightthickness=0, height=S(170))
+        cv.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(cv, bg=CARD)
+        cv.create_window((0, 0), window=inner, anchor="nw")
+        sb = tk.Scrollbar(b, orient="vertical", command=cv.yview)
+        sb.pack(side="right", fill="y")
+        cv.configure(yscrollcommand=sb.set)
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Enter>", lambda e: cv.bind_all(
+            "<MouseWheel>", lambda ev: cv.yview_scroll(-int(ev.delta / 120), "units")))
+        cv.bind("<Leave>", lambda e: cv.unbind_all("<MouseWheel>"))
+        self._deploy_inner = inner
+        self._deploy_running = False
+        self._refresh_deploy()
+
+    def _refresh_deploy(self):
+        """重跑探测并重建清单行。必须在主线程调用（直接操作 Tk 控件）。"""
+        inner = self._deploy_inner
+        for w in list(inner.children.values()):
+            w.destroy()
+        try:
+            rows = rt.deploy_inventory(CONFIG)
+        except Exception as e:
+            self.log("[部署] 探测失败：%s" % e, "err")
+            return
+        for key, name, status, note, expect, script in rows:
+            row = tk.Frame(inner, bg=CARD)
+            row.pack(fill="x", pady=1)
+            color = {"就绪": BORDER, "缺失": "#E06C75", "不完整": "#E5A04C"}.get(status, TXT2)
+            dot = tk.Canvas(row, width=S(8), height=S(8), bg=CARD, highlightthickness=0)
+            dot.create_oval(1, 1, S(7), S(7), fill=color, outline="")
+            dot.pack(side="left", padx=(0, S(4)))
+            txt = name if not note else "%s · %s" % (name, note)
+            tk.Label(row, text=txt, bg=CARD, fg=TXT, font=f(8), anchor="w",
+                     wraplength=S(118), justify="left").pack(
+                side="left", fill="x", expand=True)
+            if script:
+                RButton(row, text="安装",
+                        command=lambda k=key, s=script: self._install_deploy(k, s),
+                        fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=1,
+                        stretch=True).pack(side="right", padx=(S(4), 0))
+            else:
+                RButton(row, text="—", state="disabled", fill=CARD2, fg=TXT2, outer=CARD,
+                        font=f(8), pady=1, stretch=True).pack(side="right", padx=(S(4), 0))
+
+    def _install_deploy(self, key, script):
+        """一键安装：互斥 + 校验脚本存在 + 后台线程跑安装脚本。"""
+        if self._deploy_running:
+            self.log("[部署] 已有安装任务在跑，先等它结束", "warn")
+            return
+        script_path = os.path.join(CONFIG["deploy_root"], script)
+        if not os.path.isfile(script_path):
+            self.log("[部署] 找不到安装脚本：%s" % script_path, "err")
+            return
+        self._deploy_running = True
+        self.log("[部署] 开始：%s（%s）" % (key, os.path.basename(script_path)), "hi")
+        threading.Thread(target=self._run_deploy_install, args=(key, script_path),
+                        daemon=True).start()
+
+    def _run_deploy_install(self, key, script_path):
+        """后台线程：跑安装脚本，stdout/stderr 逐行清洗后流进统一日志窗。
+        与 服务面板._svc_reader 同模式（self.log 内部经 root.after 回主线程落盘/渲染）。"""
+        try:
+            proc = subprocess.Popen(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-File", script_path],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                encoding="utf-8", errors="replace", creationflags=rt.NO_WINDOW)
+            for line in proc.stdout:
+                self.log("[部署] " + strip_ansi(line).rstrip(), "dim")
+            proc.wait()
+            if proc.returncode == 0:
+                self.log("[部署] %s 完成" % key, "ok")
+            else:
+                self.log("[部署] %s 失败（退出码 %s）" % (key, proc.returncode), "err")
+        except Exception as e:
+            self.log("[部署] %s 启动失败：%s" % (key, e), "err")
+        finally:
+            self._deploy_running = False
+            self.root.after(0, self._refresh_deploy)  # 完成回调：主线程重跑探测刷新清单
+            if key.startswith("node_"):
+                self.log("[部署] 装了节点，必要时重启 ComfyUI 生效", "warn")
 
     # ---- 服务卡（中栏顶部，常显）----
     def _build_service_card(self, parent):
