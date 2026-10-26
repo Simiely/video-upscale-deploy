@@ -2,6 +2,41 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.2.29 · 2026-10-26
+
+**新：把「工作流目录」纳入部署清单，缺失时可一键恢复到合规状态（第 16 项，公共组）。**
+
+### 用户需求
+「工作流目录如果不存在，也可以在部署清单里面把它做到符合标准。」
+
+### 背景（本机实测）
+`C:\AI\ComfyUI\user\default\workflows` **根本不存在** —— 也就是说内置六套方案的 workflow json 一个都加载不了，
+但部署清单里没有任何一项反映这件事（清单只覆盖底座 / 节点 / 权重）。
+
+### 变更
+- `部署清单.py` 新增第 16 项 `workflows`（公共组）：
+  - `check=()` **动态判定** —— 运行时以「部署仓库 `workflows/` 下实际有哪些 json」为准（`运行时.workflow_files`），
+    上游加工作流不用改代码；仓库里没有 `workflows/` 时该项直接判「缺失」并说明原因。
+  - `restore="workflows"` —— 声明式动作标记，UI 据此渲染「恢复」按钮。
+- `运行时.restore_workflows(cfg)`：把 `{deploy_root}/workflows/**/*.json` **压平**复制到
+  `{comfy_dir}/user/default/workflows/`，目录不存在自动创建，已存在的跳过（**幂等**）。
+  压平是必须的：启动器 `scan_workflows` 只扫工作流目录**顶层**，而仓库是按 FlashVSR/SeedVR2/MiniMax 分子目录存的。
+- `视频方案启动器`：`_deploy_action` 增加第三类动作「恢复」（优先级：安装 > 恢复 > 下载）；
+  `_restore_deploy` / `_run_deploy_restore` 后台执行，完成后自动 `_refresh_deploy` + `_rescan_wf_dir`（工作流下拉立刻刷新）。
+
+### 验证（本机端到端）
+- 初始：`workflows` 项「缺失」，说明列出 14 个待铺文件。
+- 点「恢复」→ **新复制 11 个 / 已存在跳过 3 个** → 复测「就绪」，实际占用 **33 KB**；
+  `scan_workflows` 扫到 **14 个**工作流。
+- 再点一次 → **0 复制 / 14 跳过**（幂等，符合 AGENTS「重跑不重下」的约定）。
+- 清单整体：**就绪 15 / 16**，只剩 Video2X 未装。
+
+### 附带修掉的一个部署漂移
+部署根 `C:\AI\video-upscale-deploy\workflows` 只有 3 个旧 json（`*-12G-*`），
+缺启动器内置方案引用的 4 个（`SeedVR2-放大1080p-标准`、`SeedVR2-放大2160p-4K极致`、
+`MiniMax-H3-文生视频T2V`、`MiniMax-H3-图生视频I2V`）—— 只从部署根恢复是**恢复不全**的。
+已把仓库 `workflows/` 的 11 个 json 同步进部署根（`cp -n`，不覆盖已有），部署根现有 14 个。
+
 ## v1.2.28 · 2026-10-26
 
 **改：下载提速 35~200 倍 —— 源换成 ModelScope + 分段并行 + sha256 校验。**

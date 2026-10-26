@@ -41,7 +41,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.2.28"                                 # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.2.29"                                 # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -903,6 +903,10 @@ class App(服务面板.服务面板):
             return RButton(parent, text="安装",
                            command=lambda: self._install_deploy(item["key"], item["script"]),
                            fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=1, minwidth=46)
+        if item and item.get("restore"):
+            return RButton(parent, text="恢复",
+                           command=lambda: self._restore_deploy(item["key"]),
+                           fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=1, minwidth=46)
         if item and item.get("hf"):
             return RButton(parent, text="下载",
                            command=lambda: self._download_deploy(item["key"]),
@@ -1105,6 +1109,36 @@ class App(服务面板.服务面板):
             self.root.after(0, lambda: self._refresh_deploy(verbose=True))  # 完成回调：主线程重跑探测刷新清单
             if key.startswith("node_"):
                 self.log("[部署] 装了节点，必要时重启 ComfyUI 生效", "warn")
+
+    # --- 恢复（从部署仓库拷内置资源，如工作流 json）---
+    def _restore_deploy(self, key):
+        if self._deploy_running:
+            self.log("[部署] 已有任务在跑，先等它结束", "warn")
+            return
+        item = dl.by_key(key)
+        if not item:
+            return
+        self._deploy_running = True
+        threading.Thread(target=self._run_deploy_restore, args=(item,), daemon=True).start()
+
+    def _run_deploy_restore(self, item):
+        """后台线程：把部署仓库里的内置资源铺到目标目录（幂等，已存在跳过）。"""
+        try:
+            self.log("[部署] 恢复 %s ← 部署仓库" % item["name"], "hi")
+            copied, skipped, msg = rt.restore_workflows(CONFIG)
+            if copied or skipped:
+                self.log("[部署] %s：新复制 %d 个，已存在跳过 %d 个" % (msg, copied, skipped), "ok")
+            else:
+                self.log("[部署] 恢复失败：%s" % msg, "err")
+        except Exception as exc:
+            self.log("[部署] 恢复异常：%s" % exc, "err")
+        finally:
+            self._deploy_running = False
+
+            def done():
+                self._refresh_deploy(verbose=True)
+                self._rescan_wf_dir()      # 铺完立刻刷新工作流下拉
+            self.root.after(0, done)
 
     # --- 下载（HF 镜像补单文件，P1）---
     def _download_deploy(self, key):

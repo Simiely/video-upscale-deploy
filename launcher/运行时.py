@@ -1261,8 +1261,17 @@ def deploy_inventory(cfg):
     rows = []
     for it in dl.DEPLOY_ITEMS:
         root = _resolve_deploy_root(cfg, it.get("root", "comfy_dir"))
+        # 判定清单：多数项写死在 部署清单 里；「工作流目录」留空 = 以部署仓库 workflows/
+        # 实际有哪些 json 为准（动态），这样上游加工作流不用改代码。
+        checks = list(it["check"])
+        if not checks and it.get("restore") == "workflows":
+            checks = ["user/default/workflows/" + fn for fn in workflow_files(cfg)]
+        if not checks:
+            rows.append((it["key"], it["name"], "缺失",
+                         "部署仓库里没找到 workflows 目录，无法判定", None, 0, it["script"]))
+            continue
         # expect 支持三种写法：None / 整数 / 与 check 等长的元组（H3 双 VAE 两文件大小不同）
-        expect_list = dl.expects_of(it)
+        expect_list = dl.expects_of(it) if it["check"] else [None] * len(checks)
         total_expect = sum(x for x in expect_list if x) or None
         if not root or not os.path.isdir(root):
             rows.append((it["key"], it["name"], "缺失",
@@ -1270,7 +1279,7 @@ def deploy_inventory(cfg):
                          total_expect, 0, it["script"]))
             continue
         missing, partial, actual = [], False, 0
-        for rel, exp in zip(it["check"], expect_list):
+        for rel, exp in zip(checks, expect_list):
             p = os.path.join(root, rel)
             if not os.path.exists(p):
                 missing.append(rel)
@@ -1324,6 +1333,51 @@ def path_size(p):
         except OSError:
             pass
     return total
+
+
+def workflow_files(cfg):
+    """部署仓库 `workflows/` 下所有 json 的**文件名**（扁平）。
+
+    为什么扁平：启动器扫工作流目录只看顶层（`scan_workflows` 用 `os.listdir`），
+    而仓库里是按 FlashVSR / SeedVR2 / MiniMax 分子目录存的 —— 铺的时候必须压平。
+    """
+    src = os.path.join(str((cfg or {}).get("deploy_root", "") or ""), "workflows")
+    out = []
+    for _dirpath, _dirnames, files in os.walk(src):
+        for fn in files:
+            if fn.lower().endswith(".json"):
+                out.append(fn)
+    return sorted(set(out))
+
+
+def restore_workflows(cfg):
+    """把部署仓库 workflows/ 下的 json 铺进 ComfyUI 的工作流目录（幂等：已存在就跳过）。
+
+    返回 (复制数, 跳过数, 说明)。目录不存在会自动建 —— 这正是「工作流目录缺失」时的修复动作。
+    """
+    dep_root = str((cfg or {}).get("deploy_root", "") or "")
+    src = os.path.join(dep_root, "workflows")
+    if not os.path.isdir(src):
+        return 0, 0, "部署仓库里没有 workflows 目录：%s" % src
+    dst = workflows_dir(cfg)
+    if not dst:
+        return 0, 0, "comfy_dir 没配置，无法定位工作流目录"
+    os.makedirs(dst, exist_ok=True)
+    copied = skipped = 0
+    for dirpath, _dirnames, files in os.walk(src):
+        for fn in files:
+            if not fn.lower().endswith(".json"):
+                continue
+            target = os.path.join(dst, fn)
+            if os.path.exists(target):
+                skipped += 1
+                continue
+            try:
+                shutil.copy2(os.path.join(dirpath, fn), target)
+                copied += 1
+            except OSError as exc:
+                return copied, skipped, "复制失败：%s（%s）" % (fn, exc)
+    return copied, skipped, "工作流目录：%s" % dst
 
 
 def _resolve_deploy_root(cfg, root):

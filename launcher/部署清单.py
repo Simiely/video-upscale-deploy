@@ -54,6 +54,13 @@ DEPLOY_ITEMS = (
          script="",  # P2 才补安装脚本；现走 PATH / 候选路径解析
          desc="视频封装/转码（{ffmpeg_dir}）"),
 
+    # ---------- 公共：内置方案的工作流 ----------
+    # check 留空 = 动态判定：以部署仓库 workflows/ 下实际有哪些 json 为准（运行时补全），
+    # 这样上游加了新工作流，清单自动跟上，不用改代码。
+    dict(key="workflows", group="common", name="工作流目录", root="comfy_dir",
+         check=(), expect=None, restore="workflows", script="",
+         desc="内置方案的 workflow json（从部署仓库 workflows/ 铺进 ComfyUI）"),
+
     # ---------- 方案一：Video2X（独立目录） ----------
     dict(key="video2x", group="video2x", name="Video2X", root=r"C:\AI\Video2X",
          check=("video2x.exe",), expect=None,
