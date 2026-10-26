@@ -4,6 +4,28 @@
 
 ---
 
+## v1.9.2 · 2026-10-26
+
+**修：启动器 v1.2.21 / v1.2.22 —— 图生视频首帧生效 + 界面裁切修复；本版起 Releases 提供整包下载。**
+
+### 变更
+- **启动器 v1.2.21**：修「图生视频首帧不生效」—— 根因是 I2V 工作流的提示词与 T2V
+  逐字节相同、不符合 MiniMax 官方 I2VA 结构。现按官方 `base-en.txt` §2.1 逐字补
+  首行对齐句 + 三字段（`提示词.py`）；H3 卡新增提示词输入框；输入放开图片；
+  `mm_i2v` 改指专用画布原件。详见 `launcher/CHANGELOG.md` v1.2.21。
+- **启动器 v1.2.22**：右栏详情卡第三个按钮「加载到画布」被切掉（详情盒写死 336px，
+  SeedVR2 极致档实测需 367px）→ 改为按内容长高、只增不减；左栏长路径不再从单词
+  中间断开（`wrap_at_separators`）；描述换行宽度修正。
+- 两份 MiniMax API 图的 `width/height` 接回 `115 ResolutionSelector`（此前是孤儿节点）。
+- ComfyUI 画布原件（本机 `user\default\workflows\` 下 12 张）全部中文化 + 参数标注
+  —— 画布属本机运行数据不入库；本仓库 `workflows/` 下的 API 图不变。
+
+### 发版产物（本版起新增）
+- `VideoLauncher-v1.2.22.exe` —— 单文件启动器，放部署包任意层级双击即用（deploy_root 自动定位）
+- `video-upscale-deploy-v1.9.2.zip` —— 整包部署（三套方案脚本 + workflows + 文档 + 启动器 exe）
+
+---
+
 ## v1.9.1 · 2026-10-14
 
 **修：ComfyUI 输出根统一到 `$OUTPUT_DIR`，FlashVSR 批量脚本不再写死 `$COMFY_DIR\output`。**
