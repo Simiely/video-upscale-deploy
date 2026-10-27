@@ -15,13 +15,16 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
 import urllib.request
 import webbrowser
+import zipfile
 
 import 部署清单 as dl  # 缺失部署清单（纯数据模块）
 from 提示词 import (I2V_ALIGN, MM_FIELDS, MM_PROMPT_DEFAULT, MM_SOUND_FALLBACK,
@@ -1410,6 +1413,54 @@ def _curl_exe():
     return p if os.path.isfile(p) else "curl.exe"
 
 
+# ---------------------------------------------------------------- 代理自动探测（P1）
+# 本机实测（common.ps1 注释，2026-09-24）：hf-mirror 直连 0.04 MB/s、走 Clash 3.07 MB/s（差 75 倍）。
+# common.ps1 的 Get-HfProxy 依次试 7890 / 7891 / 10809 / 1080；这里同口径移植到 Python。
+# 约定：HF_PROXY=none 强制直连，HF_PROXY=http://... 显式指定，未设置时自动探测。
+PROXY_CANDIDATES = (
+    ("127.0.0.1", 7890, "Clash"),
+    ("127.0.0.1", 7891, "Clash 混合端口"),
+    ("127.0.0.1", 10809, "v2rayN"),
+    ("127.0.0.1", 1080, "SOCKS/通用"),
+)
+
+
+def detect_proxy(timeout=0.35):
+    """探测本机常见代理端口，返回 (代理 URL, 名字)；都没有返回 ("", "")。"""
+    for host, port, name in PROXY_CANDIDATES:
+        try:
+            with socket.create_connection((host, port), timeout):
+                return "http://%s:%d" % (host, port), name
+        except OSError:
+            continue
+    return "", ""
+
+
+def effective_proxy():
+    """下载用代理：HF_PROXY 显式优先，`none` = 强制直连，未设置则自动探测。
+
+    只用于**外网下载**。探测 ComfyUI（127.0.0.1:8188）仍必须绕代理
+    （Clash 会把本地地址也代理掉并返回 502），别把这里的结果用到 http_json 上。
+    """
+    env = (os.environ.get("HF_PROXY") or "").strip()
+    if env.lower() == "none":
+        return ""
+    if env:
+        return env
+    return detect_proxy()[0]
+
+
+def proxy_hint():
+    """启动日志用的一句话：代理是谁 / 没探测到。"""
+    env = (os.environ.get("HF_PROXY") or "").strip()
+    if env.lower() == "none":
+        return "（HF_PROXY=none，强制直连）"
+    if env:
+        return "（HF_PROXY 指定）"
+    url, name = detect_proxy()
+    return "（自动探测：%s %s）" % (name, url) if url else "（未探测到代理，走直连）"
+
+
 def hf_sources(repo, path):
     """按优先级给候选源：[(名字, url), ...]。
 
@@ -1473,7 +1524,8 @@ def hf_pull(repo, path, dest_path, expect=None, on_progress=None, sha256=None):
         segments = int(os.environ.get("HF_CONNECTIONS", "8") or 8)
     except ValueError:
         segments = 8
-    proxy = (os.environ.get("HF_PROXY") or "").strip()
+    proxy = effective_proxy()
+    via = ("经代理 %s" % proxy) if proxy else "直连"
 
     last = "无可用下载源"
     for name, url in hf_sources(repo, path):
@@ -1492,10 +1544,10 @@ def hf_pull(repo, path, dest_path, expect=None, on_progress=None, sha256=None):
             ok, size, msg = _curl_download(url, dest_path, total, on_progress, proxy)
         if ok:
             if not sha256:
-                return True, size, "%s · %s" % (name, msg)
+                return True, size, "%s · %s · %s" % (name, msg, via)
             got = _sha256_file(dest_path)
             if got.lower() == sha256.lower():
-                return True, size, "%s · %s · sha256 校验通过" % (name, msg)
+                return True, size, "%s · %s · sha256 校验通过 · %s" % (name, msg, via)
             _quarantine(dest_path)
             return False, size, "%s · 校验失败（%s… ≠ %s…），已改名 .bad，请重下" % (
                 name, got[:12], sha256[:12])
@@ -1667,3 +1719,154 @@ def human_size(n):
     if mb >= 1:
         return "%.0f MB" % mb
     return "%.0f KB" % (n / float(1024))
+
+
+# ================================================================ 磁盘空间预检（P2）
+def disk_free(path):
+    """目标路径所在盘的可用字节；路径还不存在时向上找最近存在的祖先。"""
+    p = os.path.abspath(path or ".")
+    while p and not os.path.exists(p):
+        parent = os.path.dirname(p)
+        if parent == p:
+            break
+        p = parent
+    try:
+        return shutil.disk_usage(p).free
+    except OSError:
+        return 0
+
+
+def disk_check(cfg, item):
+    """安装/下载前的空间预检，返回 (ok, 可用, 需要, 目标根)。
+
+    need 取值优先级：expect 之和（权重类，字节数精确）→ install_bytes（脚本类估算）。
+    两样都没有（底座/节点等体积未知）时 need=0，直接放行 —— 不假装知道体积。
+    """
+    root = _resolve_deploy_root(cfg, item.get("root", "comfy_dir"))
+    need = 0
+    if item.get("expect"):
+        need = sum(x for x in dl.expects_of(item) if x)
+    elif item.get("install_bytes"):
+        need = int(item["install_bytes"])
+    free = disk_free(root)
+    return ((free >= need) if need else True), free, need, root
+
+
+# ================================================================ torch / CUDA 自检（P2）
+def probe_torch(cfg, timeout=30):
+    """跑 ComfyUI 的 venv python 验证 torch 与 CUDA，返回 (ok, 版本, cuda 可用, 说明)。
+
+    **只允许在后台线程调**：import torch 视环境要 3~15 秒，同步跑会把启动流程卡住。
+    """
+    py = str(cfg.get("comfy_py", "") or "")
+    if not py or not os.path.isfile(py):
+        return False, "", False, "未找到 ComfyUI Python：%s" % (py or "未配置")
+    code = ("import torch;"
+            "print(torch.__version__);"
+            "print('1' if torch.cuda.is_available() else '0')")
+    try:
+        r = subprocess.run([py, "-c", code], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout,
+                           creationflags=NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return False, "", False, "探测超时（%ds）：torch 导入过慢或 CUDA 初始化卡住" % timeout
+    except Exception as exc:
+        return False, "", False, "启动 Python 失败：%s" % exc
+    out = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+    if r.returncode != 0 or len(out) < 2:
+        tail = (r.stderr or "").strip().splitlines()
+        return False, "", False, "python 返回 %s：%s" % (
+            r.returncode, tail[-1] if tail else "无输出")
+    return True, out[0], out[1] == "1", ""
+
+
+# ================================================================ GitHub 资产下载（P1：镜像回退）
+# 国内直连 GitHub releases 常被卡；ghproxy 系镜像对 release 资产有效（handoff §2.3）。
+GH_MIRRORS = ("https://ghproxy.net/", "https://gh-proxy.com/")
+
+
+def gh_mirrors(url):
+    """候选下载地址：原始直连 + 两个镜像前缀。"""
+    return [url] + [m + url for m in GH_MIRRORS]
+
+
+def gh_download(url, dest_path, expect=None, on_progress=None):
+    """从 GitHub 资产地址下载（curl 续传 + 镜像回退），返回 (ok, 大小, 说明)。
+
+    镜像与直连拿到的是同一份文件，所以某一路断在中途时，下一路能接着 `curl -C -` 续传。
+    """
+    proxy = effective_proxy()
+    dest_dir = os.path.dirname(dest_path)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+    last = "无可用下载地址"
+    for cand in gh_mirrors(url):
+        host = cand.split("/")[2] if "//" in cand else cand
+        total = _probe_total(cand) or (expect or 0)
+        ok, size, msg = _curl_download(cand, dest_path, total, on_progress, proxy)
+        if ok and (not expect or size >= expect):
+            return True, size, "%s · %s" % (host, msg)
+        last = "%s：%s" % (host, msg)
+    size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+    return False, size, last
+
+
+# ================================================================ ffmpeg 一键装（P2）
+# BtbN 的 win64-gpl 构建含 rawvideo + libx264/libx265（SeedVR2 要求的就是能力，不是"有没有 ffmpeg"）。
+FFMPEG_ASSET = ("https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/"
+                "ffmpeg-master-latest-win64-gpl.zip")
+
+
+def ffmpeg_capable(exe):
+    """能力探测：能读 rawvideo + 能编 libx265。AGENTS 明确不许只看文件是否存在。"""
+    def _has(args, needle):
+        try:
+            r = subprocess.run([exe, "-hide_banner"] + args, capture_output=True, text=True,
+                               errors="replace", creationflags=NO_WINDOW, timeout=20)
+        except Exception:
+            return False
+        return needle in (r.stdout or "") + (r.stderr or "")
+    return _has(["-demuxers"], "rawvideo") and _has(["-encoders"], "libx265")
+
+
+def install_ffmpeg(cfg, on_progress=None):
+    """下载 BtbN 完整版 ffmpeg 并铺到 ffmpeg_dir，返回 (ok, 说明)。
+
+    只把 exe 放进目标目录，**不改注册表级 PATH** —— PATH 由用户按手册常见问题第 8 条自行添加
+    （程序擅自改系统环境变量属于越权，也难回滚）。
+    """
+    target = str(cfg.get("ffmpeg_dir") or "")
+    if not target:
+        return False, "ffmpeg 目录未配置"
+    exe = os.path.join(target, "ffmpeg.exe")
+    if os.path.isfile(exe) and ffmpeg_capable(exe):
+        return True, "已存在完整版 ffmpeg，跳过"
+    tmp_zip = os.path.join(tempfile.gettempdir(), os.path.basename(FFMPEG_ASSET))
+    if os.path.exists(tmp_zip):
+        try:
+            os.remove(tmp_zip)          # 上次残件可能来自不同镜像，重下更稳
+        except OSError:
+            pass
+    ok, size, msg = gh_download(FFMPEG_ASSET, tmp_zip, on_progress=on_progress)
+    if not ok:
+        return False, "下载失败：%s" % msg
+    try:
+        with zipfile.ZipFile(tmp_zip) as z:
+            members = [n for n in z.namelist()
+                       if n.endswith("/bin/ffmpeg.exe") or n.endswith("/bin/ffprobe.exe")]
+            if len(members) < 2:
+                return False, "压缩包里没有 bin/ffmpeg.exe + ffprobe.exe"
+            os.makedirs(target, exist_ok=True)
+            for m in members:
+                with z.open(m) as src, open(os.path.join(target, os.path.basename(m)), "wb") as dst:
+                    shutil.copyfileobj(src, dst, 1 << 20)
+    except (zipfile.BadZipFile, OSError) as exc:
+        return False, "解压失败：%s" % exc
+    finally:
+        try:
+            os.remove(tmp_zip)
+        except OSError:
+            pass
+    if not ffmpeg_capable(exe):
+        return False, "已解压但能力探测不过（缺 rawvideo 或 libx265）"
+    return True, "已安装到 %s（%s）" % (target, human_size(size))

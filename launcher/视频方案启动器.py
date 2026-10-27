@@ -41,7 +41,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.3.0"                                  # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.4.0"                                  # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -907,6 +907,10 @@ class App(服务面板.服务面板):
             return RButton(parent, text="恢复",
                            command=lambda: self._restore_deploy(item["key"]),
                            fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=1, minwidth=46)
+        if item and item.get("installer"):
+            return RButton(parent, text="安装",
+                           command=lambda: self._install_builtin(item["key"]),
+                           fill=CARD2, fg=TXT, outer=CARD, font=f(8), pady=1, minwidth=46)
         if item and item.get("hf"):
             return RButton(parent, text="下载",
                            command=lambda: self._download_deploy(item["key"]),
@@ -1008,6 +1012,7 @@ class App(服务面板.服务面板):
         for w in list(inner.winfo_children()):
             w.destroy()
         self._deploy_cells = []
+        self._deploy_row_cells = {}       # key → 行内「大小」列（下载/安装进度就地刷新）
         rows = rt.deploy_inventory(CONFIG)
         got = {r[0]: r for r in rows}
         for gkey, gtitle, gdesc in dl.GROUPS:
@@ -1059,6 +1064,7 @@ class App(服务面板.服务面板):
             act = self._deploy_action(grid, item, status)
             act.grid(row=idx, column=3, sticky="e", padx=(S(4), S(6)), pady=S(2))
             self._deploy_cells += [name_cell, st_cell, sz_cell, act]
+            self._deploy_row_cells[key] = sz_cell
             name_cells.append(name_cell)
 
         # 名称列跟着卡片宽折行（窗口可缩放）；超长无空格 token 仍由 _clip_text 兜住
@@ -1073,6 +1079,18 @@ class App(服务面板.服务面板):
         _fit()
 
     # --- 安装（跑 .ps1）---
+    def _disk_gate(self, item):
+        """安装/下载前的磁盘预检（v1.4.0）。空间不够就拦下并说清差多少。"""
+        ok, free, need, root = rt.disk_check(CONFIG, item)
+        if need:
+            self.log("[部署] %s 目标盘剩余 %s，需要约 %s"
+                     % (root or "目标盘", rt.human_size(free), rt.human_size(need)), "dim")
+        if not ok:
+            self.log("[部署] 空间不足：%s 只剩 %s，%s 需要约 %s —— 先清理磁盘再试"
+                     % (root or "目标盘", rt.human_size(free), item["name"],
+                        rt.human_size(need)), "err")
+        return ok
+
     def _install_deploy(self, key, script):
         """一键安装：互斥 + 校验脚本存在 + 后台线程跑安装脚本。"""
         if self._deploy_running:
@@ -1081,6 +1099,9 @@ class App(服务面板.服务面板):
         script_path = os.path.join(CONFIG["deploy_root"], script)
         if not os.path.isfile(script_path):
             self.log("[部署] 找不到安装脚本：%s" % script_path, "err")
+            return
+        item = dl.by_key(key)
+        if item and not self._disk_gate(item):
             return
         self._deploy_running = True
         self.log("[部署] 开始：%s（%s）" % (key, os.path.basename(script_path)), "hi")
@@ -1109,6 +1130,42 @@ class App(服务面板.服务面板):
             self.root.after(0, lambda: self._refresh_deploy(verbose=True))  # 完成回调：主线程重跑探测刷新清单
             if key.startswith("node_"):
                 self.log("[部署] 装了节点，必要时重启 ComfyUI 生效", "warn")
+
+    # --- 安装（内置 Python 安装器，v1.4.0：ffmpeg）---
+    def _install_builtin(self, key):
+        """内置安装器：不走 .ps1，便于复用 GitHub 镜像回退与 ffmpeg 能力校验。"""
+        if self._deploy_running:
+            self.log("[部署] 已有任务在跑，先等它结束", "warn")
+            return
+        item = dl.by_key(key)
+        if not item:
+            return
+        name = item.get("installer")
+        if name != "ffmpeg":
+            self.log("[部署] 未知的内置安装器：%s" % name, "err")
+            return
+        if not self._disk_gate(item):
+            return
+        self._deploy_running = True
+        self._deploy_pct = -10
+        self._deploy_last_log = 0
+        self._deploy_mark = (time.time(), 0)
+        self.log("[部署] 开始安装 %s（内置安装器：GitHub 直连 + 镜像回退）" % item["name"], "hi")
+        threading.Thread(target=self._run_install_builtin, args=(item,), daemon=True).start()
+
+    def _run_install_builtin(self, item):
+        """后台线程：运行时.install_ffmpeg（下载 → 解压 → 能力探测）。"""
+        try:
+            ok, msg = rt.install_ffmpeg(
+                CONFIG,
+                on_progress=lambda cur, tot, k=item["key"]: self._deploy_item_progress(
+                    k, "安装", cur, tot))
+            self.log("[部署] %s：%s" % (item["name"], msg), "ok" if ok else "err")
+        except Exception as exc:
+            self.log("[部署] %s 安装异常：%s" % (item["name"], exc), "err")
+        finally:
+            self._deploy_running = False
+            self.root.after(0, lambda: self._refresh_deploy(verbose=True))
 
     # --- 恢复（从部署仓库拷内置资源，如工作流 json）---
     def _restore_deploy(self, key):
@@ -1153,8 +1210,11 @@ class App(服务面板.服务面板):
         if not root:
             self.log("[部署] 目标根目录没配置，无法下载：%s" % item["root"], "err")
             return
+        if not self._disk_gate(item):
+            return
         self._deploy_running = True
         self._deploy_pct = -10
+        self._deploy_last_log = 0
         self._deploy_mark = (time.time(), 0)
         self.log("[部署] 开始下载：%s ← %s（优先 ModelScope，分段并行）" % (item["name"], item["hf"]), "hi")
         threading.Thread(target=self._run_deploy_download, args=(item, root),
@@ -1173,7 +1233,8 @@ class App(服务面板.服务面板):
                          "dim")
                 ok, size, msg = rt.hf_pull(
                     item["hf"], hf_path, dest, expect=exp, sha256=sha,
-                    on_progress=lambda cur, tot, n=item["name"]: self._deploy_progress(n, cur, tot))
+                    on_progress=lambda cur, tot, k=item["key"]: self._deploy_item_progress(
+                        k, "下载", cur, tot))
                 if not ok:
                     self.log("[部署] %s 失败：%s" % (hf_path, msg), "err")
                     return
@@ -1187,10 +1248,23 @@ class App(服务面板.服务面板):
             self._deploy_running = False
             self.root.after(0, lambda: self._refresh_deploy(verbose=True))
 
-    def _deploy_progress(self, name, cur, total):
-        """下载进度：每 10% 打一行，带瞬时速度（20GB 逐 MB 刷会淹掉日志窗）。"""
+    def _deploy_item_progress(self, key, verb, cur, total):
+        """下载/安装进度（后台线程调）。
+
+        两路输出：① 弹窗里该条目的「大小」列就地刷新（经 uiqueue 回主线程，绝不跨线程碰控件）；
+        ② 日志每 10% 一行（20 GB 逐 MB 刷会淹掉日志窗）。
+        """
         if not total:
+            # 镜像没返回 Content-Length 时按"已下多少"显示，每 100 MB 记一行
+            txt = "%s · 已下 %s" % (verb, rt.human_size(cur))
+            self.uiqueue.put(lambda: self._set_deploy_row(key, txt))
+            if cur - getattr(self, "_deploy_last_log", 0) >= 100 * 1024 * 1024:
+                self._deploy_last_log = cur
+                self.log("[部署] %s %s：已下 %s" % (key, verb, rt.human_size(cur)), "dim")
             return
+        pct = min(100, int(cur * 100 / total))
+        txt = "%s %d%% · %s / %s" % (verb, pct, rt.human_size(cur), rt.human_size(total))
+        self.uiqueue.put(lambda: self._set_deploy_row(key, txt))
         now = time.time()
         prev_t, prev_b = getattr(self, "_deploy_mark", (now, cur))
         self._deploy_mark = (now, cur)
@@ -1199,11 +1273,36 @@ class App(服务面板.服务面板):
             mbps = (cur - prev_b) / 1048576.0 / (now - prev_t)
             if mbps > 0.05:
                 speed = "，%.1f MB/s" % mbps
-        pct = min(100, int(cur * 100 / total))
         if pct >= 100 or pct - self._deploy_pct >= 10:
             self._deploy_pct = pct
-            self.log("[部署] %s 下载中 %d%%（%s / %s%s）"
-                     % (name, pct, rt.human_size(cur), rt.human_size(total), speed), "dim")
+            self.log("[部署] %s %s中 %d%%（%s / %s%s）"
+                     % (key, verb, pct, rt.human_size(cur), rt.human_size(total), speed), "dim")
+
+    def _set_deploy_row(self, key, text):
+        """主线程：把进度写到弹窗里对应条目的「大小」列（弹窗没开/已重建就忽略）。"""
+        cell = getattr(self, "_deploy_row_cells", {}).get(key)
+        if cell is None:
+            return
+        try:
+            if cell.winfo_exists():
+                cell.configure(text=text, fg=BLUE)
+        except tk.TclError:
+            pass
+
+    # ---- 启动后台自检：下载代理 + torch/CUDA（v1.4.0）----
+    def probe_env_async(self):
+        """启动后异步跑环境自检，结果只写日志，不拖慢首屏。"""
+        threading.Thread(target=self._run_env_probe, daemon=True).start()
+
+    def _run_env_probe(self):
+        self.log("[自检] 下载代理 %s" % rt.proxy_hint(), "dim")
+        ok, ver, cuda, msg = rt.probe_torch(CONFIG)
+        if not ok:
+            self.log("[自检] torch/CUDA：%s" % msg, "warn")
+        elif cuda:
+            self.log("[自检] torch %s · CUDA 可用" % ver, "ok")
+        else:
+            self.log("[自检] torch %s · CUDA 不可用（检查显卡驱动，或重装 ComfyUI 底座）" % ver, "warn")
 
     # ---- 服务卡（中栏顶部，常显）----
     def _build_service_card(self, parent):
@@ -1566,6 +1665,7 @@ def main():
     app.log("ComfyUI 启动器已启动", "hi")
     for _msg, _tag in rt.startup_lines(CONFIG):
         app.log(_msg, _tag)
+    app.probe_env_async()          # 代理探测 + torch/CUDA：后台跑，别拖慢首屏
     root.mainloop()
 
 

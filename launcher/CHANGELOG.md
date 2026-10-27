@@ -2,6 +2,29 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.4.0 · 2026-10-27
+
+**新：把 `docs/交接-缺失下载部署.md` 剩下的 P1/P2 落地 —— 磁盘预检、ffmpeg 一键装、torch/CUDA 自检、代理自动探测、清单项内进度、GitHub 镜像回退。**
+
+### 变更
+- **磁盘预检（P2）**：`运行时.disk_free` / `disk_check`。安装与下载动作先查目标盘，不够就在日志里说清「只剩 X / 需要 Y」并拦下，不跑到一半才失败。需要体积取 `expect` 之和；脚本类用新增的 `install_bytes`（Video2X 600 MB、ffmpeg 200 MB）；体积未知的项 `need=0` 直接放行，不假装知道。
+- **ffmpeg 一键装（P2）**：新增内置安装器 `运行时.install_ffmpeg`（BtbN win64-gpl → 解出 `ffmpeg.exe` + `ffprobe.exe` → 能力探测 rawvideo / libx265）；部署清单 ffmpeg 项从「需手动」变成「安装」。**不改注册表级 PATH**（越权且难回滚），仍按手册常见问题第 8 条由用户自行添加。
+- **torch/CUDA 自检（P2）**：`运行时.probe_torch` 跑 venv python 验 `torch.__version__` + `cuda.is_available()`；启动后由后台线程执行（实测 6.7 s，绝不同步阻塞首屏），结果只写日志。
+- **代理自动探测（P1）**：`运行时.detect_proxy` / `effective_proxy`，按 7890 / 7891 / 10809 / 1080 顺序探测（与 `common.ps1` 的 `Get-HfProxy` 同口径），`HF_PROXY=none` 仍可强制直连；下载完成日志带「经代理 … / 直连」。
+- **清单项内进度（P1）**：弹窗里该条目的「大小」列就地显示 `下载 5% · 1.02 GB / 19.53 GB`（经 `uiqueue` 回主线程，不跨线程碰控件）；镜像不返回 Content-Length 时退化为「已下 X」，每 100 MB 记一行。
+- **GitHub 资产镜像回退（P1）**：`运行时.gh_download` 按「直连 → ghproxy.net → gh-proxy.com」依次尝试，`curl -C -` 续传；`common.ps1` 新增 `Invoke-GhAsset`，`01-Video2X/安装Video2X.ps1` 的压缩包下载改走它（原来只有 Invoke-WebRequest 直连）。
+- `部署清单.py` 新增字段 `installer` / `install_bytes`；ffmpeg 项改为 `installer="ffmpeg"`。
+
+### 验证
+- `py_compile` 全通过；`radon mi` 两模块均为 **C**；两个 `.ps1` 解析 OK 且 **BOM 保留**。
+- 运行时实测：`detect_proxy → Clash 127.0.0.1:7890`；`disk_check`（H3）需 19.53 GB / 剩 408.40 GB；`probe_torch → 2.14.0+cu130，CUDA 可用`（6.7 s）；`ffmpeg_capable(C:\AI\ffmpeg\bin\ffmpeg.exe) → True`；`install_ffmpeg` 幂等跳过（「已存在完整版 ffmpeg」）。
+- UI 渲染：真实 App 开窗 1277×999，部署清单弹窗 836×769；注入进度后 H3 行显示蓝色 `下载 5% · 1.02 GB / 19.53 GB`，ffmpeg 行「已安装」，Video2X 仍为「安装」。
+
+### 未闭环
+- **模块规模超阈值**：`视频方案启动器.py` LLOC **1219**、`运行时.py` **1172**（阈值 1000；v1.2.23 起已累积超标），本版又各加约 70 / 136 行 —— 需一次专项拆分（部署卡拆 mixin、下载与自检拆独立模块）。
+- GitHub 镜像回退覆盖「启动器内置安装器 + Video2X 脚本」；ffmpeg 的 PATH 注入仍未自动化（设计如此，避免越权改系统环境）。
+- 20 GB 级下载整链仍未实测（本版只补了项内进度与断点逻辑）。
+
 ## v1.3.0 · 2026-10-27
 
 **改名：程序对外名称改为「ComfyUI 启动器」，exe 产物改为 `ComfyUI启动器.exe`。**

@@ -507,3 +507,36 @@ function Invoke-ComfyPrompt {
   }
   throw "等待超时（$TimeoutSec 秒），任务可能还在跑，可到网页界面查看队列"
 }
+
+function Invoke-GhAsset {
+  <#
+    作用：从 GitHub release 资产地址下载文件；直连不通就自动切国内镜像。
+    参数：-Url 资产地址；-OutFile 目标文件；-ExpectSize 期望字节数（0 = 不校验）；
+          -Proxy 代理（空 = 自动探测，'none' = 直连）。
+    返回：$true 下载并校验通过 / $false 全部地址都失败。
+    依据：handoff §2.3 —— ghproxy.net / gh-proxy.com 对 release 资产有效；
+          curl.exe 从 Win10 1803 起内置，`-C -` 可续传（同一文件换镜像也能接上）。
+          v1.10.1 起 Video2X 安装脚本改用它（原来只有 Invoke-WebRequest 直连，国内常卡死）。
+  #>
+  param([string]$Url, [string]$OutFile, [long]$ExpectSize = 0, [string]$Proxy = '')
+  if (-not $Proxy) { $Proxy = Get-HfProxy }
+  $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+  if (-not (Test-Path $curl)) { $curl = 'curl.exe' }
+  $cands = @($Url, "https://ghproxy.net/$Url", "https://gh-proxy.com/$Url")
+  foreach ($u in $cands) {
+    if ((Test-Path $OutFile) -and $ExpectSize -gt 0 -and (Get-Item $OutFile).Length -ge $ExpectSize) {
+      return $true
+    }
+    $argList = @('-L', '--fail', '-C', '-', '--retry', '5', '--retry-delay', '3',
+                 '--retry-all-errors', '--connect-timeout', '30', '-o', $OutFile)
+    if ($Proxy -and $Proxy -ne 'none') { $argList += @('-x', $Proxy) }
+    $argList += $u
+    & $curl @argList
+    if ($LASTEXITCODE -eq 0) {
+      if ($ExpectSize -le 0) { return $true }
+      if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -ge $ExpectSize) { return $true }
+    }
+    Write-Note "下载未完成（curl 退出码 $LASTEXITCODE），换下一个地址：$u"
+  }
+  return $false
+}

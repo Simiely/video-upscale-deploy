@@ -33,8 +33,10 @@ New-Item -ItemType Directory -Path $VIDEO2X_DIR -Force | Out-Null
 $zip = Join-Path $env:TEMP $asset.name
 
 if (-not (Test-Path $zip)) {
-  Write-Detail "下载中（GitHub 直连较慢时请开代理，或到 releases 页用镜像）..."
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
+  Write-Detail "下载中（直连 → ghproxy / gh-proxy 镜像自动回退，支持续传）..."
+  if (-not (Invoke-GhAsset -Url $asset.browser_download_url -OutFile $zip -ExpectSize $asset.size)) {
+    throw "下载失败（直连与镜像都不通）。可手动下载后放到 $zip：$($asset.browser_download_url)"
+  }
 }
 Write-Done "已下载：$zip"
 

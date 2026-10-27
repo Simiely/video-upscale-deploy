@@ -10,6 +10,8 @@
 #           元组 = 与 check 一一对应的逐文件期望值）
 #   hf      HF 仓库（"org/repo"）；有它才能「下载」单文件（仓库内路径由 check 去掉 models/ 前缀得到）
 #   script  一键安装脚本（相对 deploy_root；"" = 暂无脚本）
+#   installer  内置 Python 安装器名（v1.4.0；"ffmpeg" = 走 运行时.install_ffmpeg，不用 .ps1）
+#   install_bytes  脚本/内置安装器的估算体积（v1.4.0；仅用于「磁盘空间预检」）
 #   desc    一句话描述
 #
 # 数据实测于 2026-10-26，与 docs/交接-缺失下载部署.md §4 一致。
@@ -51,8 +53,8 @@ DEPLOY_ITEMS = (
          desc="视频读写节点（Kosinkadink），与 ffmpeg 配合"),
     dict(key="ffmpeg", group="common", name="ffmpeg", root="ffmpeg_dir",
          check=("ffmpeg.exe",), expect=None,
-         script="",  # P2 才补安装脚本；现走 PATH / 候选路径解析
-         desc="视频封装/转码（{ffmpeg_dir}）"),
+         script="", installer="ffmpeg", install_bytes=200 * 1024 * 1024,
+         desc="视频封装/转码（{ffmpeg_dir}）· 内置安装器走 BtbN gpl 包，含 rawvideo + libx265"),
 
     # ---------- 公共：内置方案的工作流 ----------
     # check 留空 = 动态判定：以部署仓库 workflows/ 下实际有哪些 json 为准（运行时补全），
@@ -65,7 +67,7 @@ DEPLOY_ITEMS = (
     dict(key="video2x", group="video2x", name="Video2X", root=r"C:\AI\Video2X",
          check=("video2x.exe",), expect=None,
          size_hint="约 190 MB",   # 仅供显示：GitHub release 的 video2x-windows-amd64.zip（6.4.0 = 187.9 MB）
-         script="01-Video2X/安装Video2X.ps1",
+         script="01-Video2X/安装Video2X.ps1", install_bytes=600 * 1024 * 1024,
          desc="方案一引擎（k4yt3x/video2x 6.4.0，C++/Vulkan，不依赖 Python/CUDA）"),
 
     # ---------- 方案二：FlashVSR ----------

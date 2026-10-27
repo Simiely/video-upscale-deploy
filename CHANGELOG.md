@@ -4,6 +4,21 @@
 
 ---
 
+## v1.10.1 · 2026-10-27
+
+**启动器 v1.4.0：交接清单剩余 P1/P2 落地（磁盘预检 / ffmpeg 一键装 / torch 自检 / 代理探测 / 项内进度），部署脚本补 GitHub 镜像回退。**
+
+### 变更
+- 启动器新增：磁盘空间预检、ffmpeg 内置安装器（BtbN gpl 包 + rawvideo/libx265 能力探测）、torch/CUDA 后台自检、代理自动探测（7890/7891/10809/1080）、部署清单项内下载进度、GitHub 资产镜像回退（直连 → ghproxy.net → gh-proxy.com）。详见 `launcher/CHANGELOG.md` v1.4.0。
+- `common.ps1` 新增 `Invoke-GhAsset`（curl 续传 + 镜像回退）；`01-Video2X/安装Video2X.ps1` 的发行包下载改走它，直连卡死时自动换镜像。
+- 未完成项收敛到 `docs/交接-缺失下载部署.md` §9（含模块拆分、20 GB 整链实测、Video2X 端到端验收）。
+
+### 发版产物
+- `ComfyUI-Launcher-v1.4.0.exe` —— 单文件启动器（二进制名为 `ComfyUI启动器.exe`）
+- `video-upscale-deploy-v1.10.1.zip` —— 整包部署
+
+---
+
 ## v1.10.0 · 2026-10-27
 
 **启动器改名「ComfyUI 启动器」（启动器 v1.3.0），并为 v1.2.23~v1.2.29 的改动首次补发 Release。**
