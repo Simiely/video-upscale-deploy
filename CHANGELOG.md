@@ -13,7 +13,7 @@
 - 本版同时纳入此前只进仓库、未发版的启动器改动：部署清单卡（15 → 16 项，新增「工作流目录」一键恢复）/ 按工作流分组卡片 / 实际占用大小列 / ModelScope 优先 + 8 段并行 + sha256 下载。
 
 ### 发版产物
-- `ComfyUI启动器-v1.3.0.exe` —— 单文件启动器，放部署包任意层级双击即用（deploy_root 自动定位）
+- `ComfyUI-Launcher-v1.3.0.exe` —— 单文件启动器，放部署包任意层级双击即用（deploy_root 自动定位）；二进制本身即 `ComfyUI启动器.exe`，Release 资产名用 ASCII 以免下载链被中转服务改写
 - `video-upscale-deploy-v1.10.0.zip` —— 整包部署（三套方案脚本 + workflows + 文档 + 启动器 exe）
 
 ---
