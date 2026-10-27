@@ -1,13 +1,13 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-10-27 **v1.10.1**（commit hash `564425f`）（启动器 v1.4.0：磁盘预检 / ffmpeg 一键装 / torch·CUDA 自检 / 代理自动探测 / 项内进度 / GitHub 镜像回退；`common.ps1` 新增 `Invoke-GhAsset`，`01-Video2X/安装Video2X.ps1` 改走镜像回退）· 2026-10-27 **v1.10.0**（commit hash `4292ab0`）（启动器改名「ComfyUI 启动器」〔启动器 v1.3.0，exe 产物 `ComfyUI启动器.exe`〕+ Releases 补发：`ComfyUI-Launcher-v1.3.0.exe` / `video-upscale-deploy-v1.10.0.zip`）· 2026-10-26 **v1.9.2**（发版快照：Releases 附 `VideoLauncher-v1.2.22.exe` 与整包 zip；含启动器 v1.2.21/22 全部修复）(commit `c4cd9ad`) · 2026-10-26 **v1.2.21**（图生视频首帧不生效：提示词按 MiniMax 官方 I2VA 结构补对齐句 + 三字段、启动器加提示词入口、`mm_i2v` 改指专用画布原件、`115` 接回宽高）(commit `5a7f3c8`) · 2026-10-14 **v1.9.1**（ComfyUI 输出根统一到 `$OUTPUT_DIR`：`02-FlashVSR/批量放大.ps1` 不再写死 `$COMFY_DIR\output`、`-AutoStart` 补传 `--output-directory`；配套启动器 v1.2.20）· 2026-10-14 **v1.9.0**（两个仓库合并：`video-launcher` 用 git subtree 并入 `launcher/` 子目录〔完整提交历史保留〕 + 启动器 `deploy_root` 自动定位）(commit `732f858`)
+> 📌 **文档基线**：2026-10-27 **v1.11.0**（commit hash `f59a486`）（新增方案四 `04-VisualEnhancer/`〔VEHelper v1.5.0：7 模块重构 + 精简 GPU/磁盘/端口展示〕；发版合并未单独发版的 v1.10.1）· 2026-10-27 **v1.10.1**（commit hash `564425f`）（启动器 v1.4.0：磁盘预检 / ffmpeg 一键装 / torch·CUDA 自检 / 代理自动探测 / 项内进度 / GitHub 镜像回退；`common.ps1` 新增 `Invoke-GhAsset`，`01-Video2X/安装Video2X.ps1` 改走镜像回退）· 2026-10-27 **v1.10.0**（commit hash `4292ab0`）（启动器改名「ComfyUI 启动器」〔启动器 v1.3.0，exe 产物 `ComfyUI启动器.exe`〕+ Releases 补发：`ComfyUI-Launcher-v1.3.0.exe` / `video-upscale-deploy-v1.10.0.zip`）· 2026-10-26 **v1.9.2**（发版快照：Releases 附 `VideoLauncher-v1.2.22.exe` 与整包 zip；含启动器 v1.2.21/22 全部修复）(commit `c4cd9ad`) · 2026-10-26 **v1.2.21**（图生视频首帧不生效：提示词按 MiniMax 官方 I2VA 结构补对齐句 + 三字段、启动器加提示词入口、`mm_i2v` 改指专用画布原件、`115` 接回宽高）(commit `5a7f3c8`) · 2026-10-14 **v1.9.1**（ComfyUI 输出根统一到 `$OUTPUT_DIR`：`02-FlashVSR/批量放大.ps1` 不再写死 `$COMFY_DIR\output`、`-AutoStart` 补传 `--output-directory`；配套启动器 v1.2.20）· 2026-10-14 **v1.9.0**（两个仓库合并：`video-launcher` 用 git subtree 并入 `launcher/` 子目录〔完整提交历史保留〕 + 启动器 `deploy_root` 自动定位）(commit `732f858`)
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
 
 ## 仓库结构（v1.9.0 起）
 
-本仓库 = **部署包（根目录）+ 图形启动器（`launcher/`）**。
+本仓库 = **部署包（根目录）+ 图形启动器（`launcher/`）+ 方案四视觉增强启动器（`04-VisualEnhancer/`）**。
 `launcher/` 是 v1.9.0 从独立的 `video-launcher` 仓库用 **`git subtree`** 并入的 ——
 **完整提交历史都在这一棵历史里**（`git log --oneline -- launcher/` 可查），不是搬文件压平。
 
@@ -16,6 +16,7 @@
 | 根：`00-ComfyUI底座/` ~ `03-SeedVR2/`、`common.ps1`、`检查环境.ps1` | 装环境、批量放大 | PowerShell 5.1 | 换引擎版本、调参数 |
 | `workflows/` | 11 份工作流图（API 扁平表格式） | JSON | 换模型、调档位 |
 | `launcher/` | 桌面启动器（界面 + 调度） | Python 3.12+ / tkinter | 改界面、改调度逻辑 |
+| `04-VisualEnhancer/` | 方案四：Merserk Visual Enhancer 下载/安装/启动器（非 ComfyUI） | Python 3.12+ / tkinter + sv-ttk | 改下载链路、界面、打包 |
 
 > ⚠️ **改工作流文件名要同步三处**（v1.8.0 那次改名就是这三处）：
 > ① `workflows/` 里的文件名 → ② `launcher/运行时.py` 的 `WORKFLOWS` 里六条 `api` 路径
@@ -38,6 +39,8 @@
 | 方案三权重 | HF `numz/SeedVR2_comfyUI` + `AInVFX/SeedVR2_comfyUI` |
 | 方案一 | `k4yt3x/video2x` **6.4.0** Windows 便携版（C++/Vulkan，不依赖 Python/CUDA） |
 | HF 下载源 | 默认 `hf-mirror.com`，可用环境变量 `HF_ENDPOINT` 覆盖 |
+| VEHelper 运行/打包 | Python 3.14.6（本机）+ tkinter + `sv-ttk` 2.6.1；PyInstaller 6.22.3，产物 `VEHelper.exe` |
+| 方案四外部程序 | `Merserk/dlss5-visual-enhancer` 桌面版，默认安装到 `D:\Tool\VisualEnhancer`（不入库） |
 
 目标显卡：RTX 4070 Super 12G / 4070 Ti Super 16G / RTX 4090 24G
 
@@ -65,6 +68,10 @@
 - **别用「倍率」估 FlashVSR 的时间，要按输出分辨率估**：实测 720p→1440p = 3.5 s/帧，720p→2160p（scale 3）= **≈17 s/帧**。面积只涨 2.25 倍，耗时涨约 5 倍（tile 数与单 tile 窗口同时变大），**scale 是超线性的**，按倍率估会严重低估。
 - **`/interrupt` 打不断 CUDA 算子**：`POST /interrupt` 返回 200、日志也打印 `Global interrupt`，但队列仍 `running`、GPU 仍 100%（VAE 的 tiled kernel 要等算子返回，可能几分钟）。只能杀进程：`netstat -ano` 找 8188 的 PID → `Stop-Process -Id <pid> -Force`；停完三项核验：端口释放 / 显存回落 / `nvidia-smi --query-compute-apps` 里无 python。
 - **`workflows/` 下的 json 故意用 API 格式而非 UI 格式**：前端 `isApiJson(e)` 的判定是「是对象且每个值都带 `class_type`」，满足即自动还原成节点图（源码见 `comfyui_frontend_package/static/assets/settingStore-*.js`）。UI 格式要维护 `widgets_values` 的严格顺序，还要处理 `format` 联动出的动态参数（`h264-mp4` → `crf`；`nvenc_*` → `bitrate` + `megabit`），**写错不会报错、只会静默用默认值**，比手动连线更难查。
+- **VEHelper 的版本查询不能换成 REST API**：未认证 GitHub API 只有 60 次/小时，界面每次启动都查很容易打满；现用 `releases.atom` 取 tag + `releases/expanded_assets/<tag>` 取资产名，不受该限额影响。
+- **`.parts/plan.json` 必须按 tag / 资产名 / 总字节数三者校验**：只比 tag 会把不同版本的段拼在一起，合并出来是坏包。任一项对不上就整计划重置。
+- **不要尝试用程序下 VE 的三个模型**：`Visual-Enhancer/*` 是私有 HF 仓库，匿名请求 401，作者页也没有公开副本，官方 GUI 没有 token 输入口。这三颗只影响「模型加载」，神经渲染 / DLSS SR / RTX VSR 都不需要它们。
+- **打包 tkinter 前先清 `TCL_LIBRARY` / `TK_LIBRARY`**：外部 PyInstaller 程序可能把这两个变量留在父进程环境里，PyInstaller 会据此判定「tkinter installation is broken」并把 tkinter 整个排除，exe 启动即报 `No module named 'tkinter'`。构建后确认 TOC 里有 tkinter、构建日志出现 `pyi_rth__tkinter.py`。
 
 ## 约定
 
@@ -101,6 +108,12 @@ ffmpeg -hide_banner -encoders | Select-String libx265
 
 # 验收放大产物：编码应为 h264（mpeg4 = 踩了精简 ffmpeg）、帧数与源一致、有 aac 音轨
 ffprobe -v error -show_entries stream=codec_name,width,height,nb_frames -of default=noprint_wrappers=1 "输出.mp4"
+
+# 方案四：跑测试 / 打包（打包前清 TCL_LIBRARY、TK_LIBRARY，见关键坑）
+cd .\04-VisualEnhancer
+python -m unittest discover -s tests -v
+Remove-Item Env:TCL_LIBRARY, Env:TK_LIBRARY -ErrorAction SilentlyContinue
+python -m PyInstaller --clean --noconfirm VEHelper.spec
 ```
 
 ## 详细规则（按需 @引用）

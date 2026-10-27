@@ -5,12 +5,13 @@
 
 一套脚本，三种画质与速度的取舍：**日常批量用 Video2X，正式出片用 SeedVR2，FlashVSR 在中间补位。**
 
-本仓库装两件事：
+本仓库装三件事：
 
 | 组成部分 | 位置 | 干什么 |
 |---|---|---|
 | **部署包** | 根目录 `00-ComfyUI底座/` ~ `03-SeedVR2/` | **装环境**：底座、三套引擎、ffmpeg 体检，全是 PowerShell |
 | **图形启动器** | [`launcher/`](launcher/) | **日常用**：一个窗口管住启动服务、挑输入、传参、实时看日志 |
+| **视觉增强启动器** | [`04-VisualEnhancer/`](04-VisualEnhancer/) | **方案四**：下载 / 安装 / 启动 Merserk Visual Enhancer（非 ComfyUI） |
 
 > **v1.9.0 起两个仓库合并**：原先独立的 [`video-launcher`](https://github.com/Simiely/video-launcher) 仓库整体并入本仓库的 [`launcher/`](launcher/)。
 > 从此工作流改名、路径调整只需改一处，不再需要两个仓库来回同步。
@@ -35,6 +36,14 @@
 | RTX 4070 Super | 12 GB | 方案一 + 方案二 | 方案二 `-Mode tiny-long`；方案三 `-Profile 12g` |
 | RTX 4070 Ti Super | 16 GB | 方案二 + 方案三 | 方案二 `-Mode tiny`；方案三 `-Profile 16g` |
 | RTX 4090 | 24 GB | 方案三 | `-Profile 24g`；方案二可开 `-Mode full` 冲画质 |
+
+### 方案四：Merserk Visual Enhancer（非 ComfyUI，可选）
+
+前三套是「超分 / 修复」链路，方案四走另一条路：直接调用 **DLSS 5 神经渲染 / DLSS SR / RTX VSR** 做实时增强，适合边看边调、快速对比效果。
+
+- 用 [`04-VisualEnhancer/`](04-VisualEnhancer/) 里的 **VEHelper** 下载、安装并启动官方 GUI（Windows 桌面程序，不依赖 ComfyUI）
+- 与前三套互不干扰：不装自定义节点、不占 ComfyUI 环境，只落一个独立目录（默认 `D:\Tool\VisualEnhancer`）
+- 模型受限说明与打包方式见 [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md)
 
 ---
 
@@ -145,6 +154,12 @@ video-upscale-deploy/
 │   ├── 提示词.py            #   MiniMax H3 提示词装配（I2VA 对齐句 + 三字段）
 │   ├── verify_deploy.py    #   部署清单逻辑自检（字段完整 / 元组结构 / 实际大小探测）
 │   └── VideoLauncher.spec  #   PyInstaller 打包配置（exe 不入库，走 Releases）
+├── 04-VisualEnhancer/      # 方案四：DLSS 5 视觉增强启动器（非 ComfyUI）
+│   ├── README.md           #   使用 / 下载链路 / 模型限制 / 打包
+│   ├── VEHelper.py         #   入口（实现拆在 vehelper/ 包）
+│   ├── vehelper/           #   界面 / 下载 / 版本查询 / 安装 / 配置
+│   ├── tests/              #   17 项 unittest（纯函数优先）
+│   └── VEHelper.spec       #   PyInstaller 打包配置（exe 不入库，走 Releases）
 ├── workflows/              # 图形界面工作流（拖进 ComfyUI 网页即用）
 │   ├── README.md           #   索引（命名规则、每份的模型/效果/档位）、用法、参数速查
 │   ├── FlashVSR/           #   FlashVSR 倍率型放大：2× 有声 / 2× 无音轨 / 长视频自动分段
@@ -171,6 +186,7 @@ video-upscale-deploy/
 | 文档 | 给谁看 | 内容 |
 |---|---|---|
 | [launcher/README.md](launcher/README.md) | 使用者 | 图形启动器：界面说明、改设置、启动自检、打包（含 tkinter 打包坑） |
+| [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md) | 使用者 | 方案四：VEHelper 用法、下载/续传链路、模型限制、打包与测试 |
 | [workflows/README.md](workflows/README.md) | 使用者 | 图形界面工作流：拖入即用、两个 FlashVSR 版本的区别、参数速查、实测性能 |
 | [docs/使用指南.md](docs/使用指南.md) | 命令行用户 | 执行顺序、每个步骤的作用、全部参数说明、显卡分配、图形界面连线表、常见问题、修订记录（图形启动器见 [launcher/README.md](launcher/README.md)） |
 | [AGENTS.md](AGENTS.md) | AI / 未来的你 | 技术栈精确版本、关键坑、约定、常用命令 |

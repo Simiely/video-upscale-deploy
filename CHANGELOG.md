@@ -4,6 +4,26 @@
 
 ---
 
+## v1.11.0 · 2026-10-27
+
+**新增方案四 `04-VisualEnhancer/`（Merserk Visual Enhancer 部署启动器）；VEHelper v1.5.0 完成模块化重构与功能精简。本版一并纳入未单独发版的 v1.10.1。**
+
+### 新增
+- 新增 `04-VisualEnhancer/`：VEHelper 图形界面负责查最新版、16 段并行下载与续传、解压安装、启动官方 GUI。官方程序本体不入库，由界面按 GitHub 最新 Release 拉取。详见 `04-VisualEnhancer/README.md`。
+- 版本查询走 `releases.atom` + `expanded_assets`，避开未认证 REST API 的 60 次/小时限制；资产下载带镜像回退。
+- 新增 `VEHelper.spec`：单文件、无控制台、`collect_all("sv_ttk")`、UPX 关闭。
+
+### 变更（VEHelper v1.5.0）
+- 重构：原 693 行单文件拆为 `app / ui / downloader / release / installer / config / errors` 七个模块，`VEHelper.py` 只保留入口。
+- 精简：移除 GPU 探测、磁盘空间探测、代理端口展示、「打开目录」按钮与长模型提示；代理探测改为下载内部兜底，界面不再显示。
+
+### 发版产物
+- `VEHelper-v1.5.0.exe` —— 单文件视觉增强启动器
+- `ComfyUI-Launcher-v1.4.0.exe` —— ComfyUI 启动器（含此前未发版的 v1.10.1 内容）
+- `video-upscale-deploy-v1.11.0.zip` —— 整包部署
+
+---
+
 ## v1.10.1 · 2026-10-27
 
 **启动器 v1.4.0：交接清单剩余 P1/P2 落地（磁盘预检 / ffmpeg 一键装 / torch 自检 / 代理探测 / 项内进度），部署脚本补 GitHub 镜像回退。**
