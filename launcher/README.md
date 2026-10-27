@@ -70,16 +70,19 @@
 | `log_to_file` | 未设置（= 关闭） | 置 `true` 后把日志区内容同时写入 `log_dir` |
 
 
-## 源码结构（v1.2.14 起为四文件）
+## 源码结构（v1.3.0 起 7 个 py 模块）
 
 | 文件 | 说明 |
 |---|---|
 | `视频方案启动器.py` | 配置 + 业务逻辑 + 界面装配（PyInstaller 入口；版本号常量 `APP_VER` 在这里） |
 | `服务面板.py` | **App 的服务 mixin**（v1.2.14 拆出）：服务启停 / 重启 / 队列清理 / 批量任务等 15 个方法；与主程序共享同一个 `CONFIG` 字典 |
 | `ui_kit.py` | 深色自绘控件库 + 设计令牌（含 `SettingsList` 设置项列表、`ask_text` 模态输入弹窗、`WorkflowDetail` 工作流详情）（**不 import 业务代码**） |
-| `运行时.py` | 与界面无关的运行时支撑：子进程"不弹黑窗"标记 / 崩溃落盘 / 绕代理 HTTP / **日志行解析与清洗**（ANSI 剥离、进度、级别、着色分类）/ **日志落盘**（`LogFile`、`NoopLog`）/ **启动自检**（`probe_path`、`startup_lines`）/ **设置项读写与打开**（`config_items`、`save_config`、`open_path`）/ **工作流 API 图取用与 UI→API 转换**（`pick_api`、`load_api`、`read_workflow`、`apply_input`、`apply_patch`、`ui_to_api`）/ **工作流目录扫描**（`scan_workflows`）/ 内置工作流清单（**不 import 业务代码，也不 import tkinter**） |
+| `运行时.py` | 与界面无关的运行时支撑：子进程"不弹黑窗"标记 / 崩溃落盘 / 绕代理 HTTP / **日志行解析与清洗**（ANSI 剥离、进度、级别、着色分类）/ **日志落盘**（`LogFile`、`NoopLog`）/ **启动自检**（`probe_path`、`startup_lines`）/ **设置项读写与打开**（`config_items`、`save_config`、`open_path`）/ **工作流 API 图取用与 UI→API 转换**（`pick_api`、`load_api`、`read_workflow`、`apply_input`、`apply_patch`、`ui_to_api`）/ **工作流目录扫描**（`scan_workflows`）/ **部署探测与下载**（`deploy_inventory`、`path_size`、`restore_workflows`、`hf_pull`）/ 内置工作流清单（**不 import 业务代码，也不 import tkinter**） |
+| `部署清单.py` | **v1.2.23 新增**：部署清单纯数据（`GROUPS` 5 组 + `DEPLOY_ITEMS` 16 项：判定文件 / 期望大小 / 安装脚本 / HF 仓库 / sha256），UI 不自己写死分类 |
+| `提示词.py` | **v1.2.21 新增**：MiniMax H3 提示词装配（按官方 I2VA 结构补对齐句 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` 三字段） |
+| `verify_deploy.py` | 部署清单逻辑自检（字段齐全 / 7 元组 / 实际大小探测），命令行跑，**不参与打包** |
 
-> 按 `AGENTS.md`「按阈值拆分」：单文件逻辑行超过 pylint 默认上限（1000）时才拆。`ui_kit.py` 是 v1.2.0 抽的，`运行时.py` 是 v1.2.5 抽的，v1.2.6 把日志行解析也归了进去（当时主文件到 1001，拆完回到 986）；v1.2.8 的落盘、v1.2.9 的启动自检同样放 `运行时.py`；v1.2.10 又拆了一次（`WORKFLOWS` / 子进程环境 / 显存探测 / 打开目录 / 输入校验下沉到 `运行时.py`，设置区整块交给 `ui_kit.SettingsList`）；**v1.2.11 把工作流详情整块（~70 行）搬成 `ui_kit.WorkflowDetail`**；v1.2.12 下拉弹出化后主文件 953 / 1000；**v1.2.14 把服务启停 / 批量任务 15 个方法拆成 `服务面板.py`，主文件 899 / 1000（余量 101）**。依赖单向：`视频方案启动器.py` → `服务面板.py` → `ui_kit.py` / `运行时.py`。版本号在主文件的 `APP_VER` 常量（窗口标题会带它）。
+> 按 `AGENTS.md`「按阈值拆分」：单文件逻辑行超过 pylint 默认上限（1000）时才拆。`ui_kit.py` 是 v1.2.0 抽的，`运行时.py` 是 v1.2.5 抽的，v1.2.6 把日志行解析也归了进去（当时主文件到 1001，拆完回到 986）；v1.2.8 的落盘、v1.2.9 的启动自检同样放 `运行时.py`；v1.2.10 又拆了一次（`WORKFLOWS` / 子进程环境 / 显存探测 / 打开目录 / 输入校验下沉到 `运行时.py`，设置区整块交给 `ui_kit.SettingsList`）；**v1.2.11 把工作流详情整块（~70 行）搬成 `ui_kit.WorkflowDetail`**；v1.2.12 下拉弹出化后主文件 953 / 1000；**v1.2.14 把服务启停 / 批量任务 15 个方法拆成 `服务面板.py`，主文件 899 / 1000（余量 101）**；后续 v1.2.21 拆出 `提示词.py`（主文件回到 940 行），v1.2.23 新增纯数据模块 `部署清单.py`，另有不参与打包的 `verify_deploy.py`。依赖单向：`视频方案启动器.py` → `服务面板.py` → `ui_kit.py` / `运行时.py`。版本号在主文件的 `APP_VER` 常量（窗口标题会带它）。
 
 ## 关于运行日志（v1.2.6 实测口径，v1.2.8 加落盘）
 

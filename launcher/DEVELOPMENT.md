@@ -4,7 +4,7 @@
 
 Python GUI，管理本地三套视频 AI 方案。定位是**编排器**：自己不做推理，只负责「拉服务 / 传参调脚本 / 回传日志」。
 
-- 组成（v1.2.14 起为四文件，零第三方依赖）：
+- 组成（v1.3.0 起为 7 个 py 模块，零第三方依赖）：
   - `视频方案启动器.py` —— 配置 + 业务逻辑 + 界面装配（约 1083 行 / 逻辑行 902；版本号常量 `APP_VER` 在这里，窗口标题带它）
   - `服务面板.py` —— **App 的服务 mixin**（v1.2.14 自主文件拆出，约 230 行 / 逻辑行 219）：
     服务启停 / 重启 / 队列清理 / 批量任务（`svc_*` / `_run_ps` / `_task_reader` 等 15 个方法）。
@@ -26,6 +26,11 @@ Python GUI，管理本地三套视频 AI 方案。定位是**编排器**：自�
     `read_workflow`）、**外部 ComfyUI 进程的查找与结束**（`find_comfy_pids` /
     `find_main_py_pids` / `kill_pid` / `stop_external`）、**内置工作流清单**。
     **不 import 业务代码，也不 import tkinter / ui_kit**（单向：主程序 → 运行时）
+  - `提示词.py` —— MiniMax H3 提示词装配（v1.2.21）：按官方 I2VA 结构自动补首行对齐句 +
+    `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` 三字段；纯逻辑
+  - `部署清单.py` —— 部署清单纯数据（v1.2.23）：`GROUPS` 5 组（公共 / Video2X / FlashVSR / SeedVR2 / MiniMax H3）
+    + `DEPLOY_ITEMS` 16 项（判定文件 / 期望大小 / 安装脚本 / HF 仓库 / sha256）；**UI 的唯一分类来源**
+  - `verify_deploy.py` —— 清单结构自检：字段齐全 / 7 元组 / 实际大小探测；命令行跑，**不参与打包**
 - 界面：深色 Fluent **三栏控制台**，蓝本为分支 `ui-redesign` 的 `redesign/video_launcher_sidebar.html`
 - **三栏分工（v1.2.5 收敛后的稳定形态）**：整体是 **2×3 网格**——上排左 / 中 / 右三栏，下排一整条运行日志（`columnspan=2`，横跨中栏 + 右栏）
   - **左栏**（跨两行、通高）＝导航（三个引擎，NavItem）+ **设置常驻**（每项两行：标签行右侧挂「打开」「修改」，值行自动换行且本身也可点改；未就绪整条转琥珀并写明原因）。左栏是"导航 + 常驻信息"，不承载会切换的内容
