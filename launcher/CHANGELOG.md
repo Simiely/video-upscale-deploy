@@ -2,6 +2,23 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.3.0 · 2026-10-27
+
+**改名：程序对外名称改为「ComfyUI 启动器」，exe 产物改为 `ComfyUI启动器.exe`。**
+
+### 用户需求
+「程序需要改名为，comfyui启动器。还需要 releases一下。」
+
+### 变更
+- 窗口标题 `视频方案启动器 v1.2.29` → **`ComfyUI 启动器 v1.3.0`**；左栏品牌 `视频启动器` → `ComfyUI 启动器`；启动日志首行改为 `ComfyUI 启动器已启动`；主文件 docstring 同步。`APP_VER` 随之升到 **v1.3.0**。
+- `VideoLauncher.spec`：`name='VideoLauncher'` → `name='ComfyUI启动器'`，产物变为 `dist/ComfyUI启动器.exe`（**spec 文件名保留**，构建命令不变）。
+- **内部标识一律不改**：桥接扩展目录 `custom_nodes/video-launcher-bridge`、工作流同步子目录 `user/default/workflows/video-launcher`、`client_id="video-launcher"`、源码文件名 `视频方案启动器.py`。这些是已落在本机 ComfyUI 里的既有路径与协议名，跟着改会让已装的桥接扩展与同步目录变成孤儿。
+- 文档同步：`launcher/README.md`（标题、产物名、清残留命令）、根 `README.md`（Releases 下载指向）、`launcher/AGENTS.md`（常用命令）、`launcher/DEVELOPMENT.md`（标题）。
+
+### 验证
+- `py_compile` 全通过；带 `TCL_LIBRARY` / `TK_LIBRARY` 打包，产物 `dist/ComfyUI启动器.exe` **13,320,248 B**（≈13.32 MB，TOC 含 `pyi_rth__tkinter`，不是 10.19 MB 的无 tkinter 坏版）。
+- exe 实跑：窗口 1277×999、标题 `ComfyUI 启动器 v1.3.0`、无 `崩溃日志.log`；`PrintWindow` 截图核对左栏品牌 `ComfyUI 启动器` 完整显示、部署卡「就绪 15 / 16」正常。
+
 ## v1.2.29 · 2026-10-26
 
 **新：把「工作流目录」纳入部署清单，缺失时可一键恢复到合规状态（第 16 项，公共组）。**

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""视频方案启动器 —— ComfyUI 底座 + FlashVSR / SeedVR2 / MiniMax H3 一键启动。
+"""ComfyUI 启动器 —— ComfyUI 底座 + FlashVSR / SeedVR2 / MiniMax H3 一键启动。
 
 界面：深色 Fluent 三栏控制台（左＝导航 + 设置 / 中＝引擎参数 / 右＝服务 + 工作流），
       运行日志横跨中、右两列、压在两栏下方，
@@ -41,7 +41,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.2.29"                                 # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.3.0"                                  # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -167,7 +167,7 @@ def _write_crash(kind, exc_type, exc, tb):
 class App(服务面板.服务面板):
     def __init__(self, root):
         self.root = root
-        root.title("视频方案启动器 " + APP_VER)
+        root.title("ComfyUI 启动器 " + APP_VER)
         root.configure(bg=BG)
         # 尺寸按"内容需求"倒推：上排要同时容下中栏引擎卡（~497）与右栏（服务卡 128 + 工作流卡
         # 含详情 ~500），下排运行日志再要 ~276 —— 取 960 高，日志才有十几行可看。
@@ -309,7 +309,7 @@ class App(服务面板.服务面板):
         brand = tk.Frame(b, bg=CARD)
         brand.pack(fill="x", pady=(0, S(14)), padx=S(2))
         swatch_text(brand, 38, BLUE, "V", outer=CARD, radius=S(10), font=f(13, True)).pack(side="left")
-        tk.Label(brand, text="视频启动器", bg=CARD, fg=TXT, font=f(11, True)).pack(
+        tk.Label(brand, text="ComfyUI 启动器", bg=CARD, fg=TXT, font=f(11, True)).pack(
             side="left", padx=(S(10), 0))
 
         # 导航只放「会切换中栏内容」的入口：三个引擎。
@@ -1563,7 +1563,7 @@ def main():
 
     app = App(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
-    app.log("视频方案启动器已启动", "hi")
+    app.log("ComfyUI 启动器已启动", "hi")
     for _msg, _tag in rt.startup_lines(CONFIG):
         app.log(_msg, _tag)
     root.mainloop()

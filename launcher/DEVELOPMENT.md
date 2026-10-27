@@ -1,4 +1,4 @@
-# DEVELOPMENT.md · 视频方案启动器
+# DEVELOPMENT.md · ComfyUI 启动器
 
 ## 项目概览
 

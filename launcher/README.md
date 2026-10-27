@@ -1,4 +1,4 @@
-# video-launcher · 视频方案启动器
+# ComfyUI 启动器（原 video-launcher）
 
 > 一个窗口管住本地三套视频 AI 方案：**拉起 ComfyUI 服务 → 选输入 → 开跑**。
 > 纯 Python 标准库实现（Tkinter，深色 UI 全自绘），零第三方依赖；源码可直接运行，也可打包成单文件 exe。
@@ -238,10 +238,10 @@ pyinstaller VideoLauncher.spec
 > 一眼识别：产物只有 **~10.19 MB**（正常 **~13.28 MB**），或日志里没有 `hook-_tkinter.py`。
 > 完整成因与正确命令见 [`AGENTS.md`](./AGENTS.md) 的「关键坑」。
 
-产物 `dist/VideoLauncher.exe`（单文件、无控制台窗口，约 13 MB；会跟随 `import ui_kit` / `import 运行时` 自动打包）。
+产物 `dist/ComfyUI启动器.exe`（单文件、无控制台窗口，约 13 MB；会跟随 `import ui_kit` / `import 运行时` 自动打包）。
 **打包产物不入库，走 Releases 发行。**
 
-> 打包前后注意：① 先 `taskkill /F /IM VideoLauncher.exe` 清残留（运行中的 exe 会锁住 `dist`，`--clean` 删不掉旧产物 → 构建中止却"看起来成功"，dist 里还是上一版）—— **你自己双击开着的那份也算数**（v1.2.10 实测：窗口还开着就打包，构建直接中止，`dist` 里仍是旧版）；② 打完核对**时间戳 + 体积**再冒烟。
+> 打包前后注意：① 先 `taskkill /F /IM ComfyUI启动器.exe` 清残留（运行中的 exe 会锁住 `dist`，`--clean` 删不掉旧产物 → 构建中止却"看起来成功"，dist 里还是上一版）—— **你自己双击开着的那份也算数**（v1.2.10 实测：窗口还开着就打包，构建直接中止，`dist` 里仍是旧版）；② 打完核对**时间戳 + 体积**再冒烟。
 > spec 里 **`upx=False`**：UPX 压缩过的单文件 exe 更像"自解压壳"，易被安全软件误报（表现就是"打开一闪就关"），收益远小于风险。
 
 ## 所属仓库

@@ -88,7 +88,7 @@ powershell -File .\03-SeedVR2\批量放大.ps1 -InputPath "E:\VideoUpscale\input
 
 ```powershell
 python .\launcher\视频方案启动器.py       # 源码直接跑（Windows + Python 3.12+）
-# 或下载 Releases 里的 VideoLauncher.exe 双击
+# 或下载 Releases 里的 ComfyUI启动器.exe 双击
 ```
 
 启动器会**自动认出自己所在的部署包**（`launcher/` 的上一级就是部署根），无需配置任何路径。
