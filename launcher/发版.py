@@ -79,6 +79,27 @@ def changelog_section(md_path, version):
     return m.group(1).strip() if m else ""
 
 
+def remote_head():
+    """远端 main 的 sha，取不到返回 ""。
+
+    优先走 API（有 GH_TOKEN 时）：这台机器 git 直连 GitHub 时通时断，走代理还会 502，
+    `git ls-remote` 经常直接失败 —— 而"HEAD 是否已推送"恰恰是发版前最该拦的一项。
+    API 在发布时本来就要用，顺带把这项检查做可靠。
+    """
+    try:
+        repo = remote_repo()
+    except SystemExit:
+        return ""
+    if os.environ.get("GH_TOKEN"):
+        try:
+            return api("GET", "/repos/%s/commits/main" % repo, tries=2).get("sha", "")
+        except SystemExit as exc:                  # API 也不通：退回 git，再不行就放行
+            print("  [注意] API 查远端失败：%s" % str(exc)[:80])
+    ls = run(["git", "-c", "credential.helper=", "-c", "http.proxy=", "-c", "https.proxy=",
+              "ls-remote", "origin", "main"], cwd=DEPLOY_ROOT, check=False)
+    return (ls.stdout or "").split("\t")[0].strip()
+
+
 # ---------------------------------------------------------------- 1. 前置检查
 def preflight(args):
     print("[1/6] 前置检查")
@@ -91,11 +112,7 @@ def preflight(args):
     if local != args.launcher:
         raise SystemExit("APP_VER (%s) 与 --launcher (%s) 不一致：先改 视频方案启动器.py 再发版"
                          % (local, args.launcher))
-    # 必须禁掉 credential.helper：本机的 helper 在无人值守环境会直接失败，
-    # 那样"是否已推送"这项检查就成了摆设（实测报"读不到远端"然后放行）。
-    ls = run(["git", "-c", "credential.helper=", "ls-remote", "origin", "main"],
-             cwd=DEPLOY_ROOT, check=False)
-    remote_sha = (ls.stdout or "").split("\t")[0].strip()
+    remote_sha = remote_head()
     if remote_sha and remote_sha != head:
         msg = "本地 HEAD 与远端不一致（远端 %s）：先 push 再发版" % remote_sha[:12]
         if args.dry_run:
