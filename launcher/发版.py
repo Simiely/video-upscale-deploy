@@ -94,7 +94,11 @@ def remote_head():
         try:
             return api("GET", "/repos/%s/commits/main" % repo, tries=2).get("sha", "")
         except SystemExit as exc:                  # API 也不通：退回 git，再不行就放行
-            print("  [注意] API 查远端失败：%s" % str(exc)[:80])
+            msg = str(exc)
+            if "HTTP 401" in msg:
+                print("  [注意] GH_TOKEN 无效（401，多为环境里残留的过期变量）—— 跳过远端比对")
+            else:
+                print("  [注意] API 查远端失败：%s" % msg[:80])
     ls = run(["git", "-c", "credential.helper=", "-c", "http.proxy=", "-c", "https.proxy=",
               "ls-remote", "origin", "main"], cwd=DEPLOY_ROOT, check=False)
     return (ls.stdout or "").split("\t")[0].strip()
