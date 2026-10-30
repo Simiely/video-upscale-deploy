@@ -91,7 +91,10 @@ def preflight(args):
     if local != args.launcher:
         raise SystemExit("APP_VER (%s) 与 --launcher (%s) 不一致：先改 视频方案启动器.py 再发版"
                          % (local, args.launcher))
-    ls = git("ls-remote", "origin", "main", check=False)
+    # 必须禁掉 credential.helper：本机的 helper 在无人值守环境会直接失败，
+    # 那样"是否已推送"这项检查就成了摆设（实测报"读不到远端"然后放行）。
+    ls = run(["git", "-c", "credential.helper=", "ls-remote", "origin", "main"],
+             cwd=DEPLOY_ROOT, check=False)
     remote_sha = (ls.stdout or "").split("\t")[0].strip()
     if remote_sha and remote_sha != head:
         msg = "本地 HEAD 与远端不一致（远端 %s）：先 push 再发版" % remote_sha[:12]
