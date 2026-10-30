@@ -1,7 +1,5 @@
 # video-upscale-deploy · 本地视频放大部署包 + 图形启动器
 
-[![ci](https://github.com/Simiely/video-upscale-deploy/actions/workflows/ci.yml/badge.svg)](https://github.com/Simiely/video-upscale-deploy/actions/workflows/ci.yml)
-
 > 面向 RTX 4070 Super 12G / 4070 Ti Super 16G / RTX 4090 24G 三张显卡的**可执行**本地视频放大方案。
 > 环境用 PowerShell 装，日常用图形界面跑 —— 不需要写代码。
 
