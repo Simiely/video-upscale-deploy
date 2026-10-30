@@ -345,7 +345,66 @@ def probe_line(cfg, key):
 
 def startup_lines(cfg):
     """逐项真实检测，返回可直接写进日志的 [(文本, 着色标签)]。"""
-    return [probe_line(cfg, key) for key, _label, _needs, _exe in STARTUP_PROBES]
+    lines = [probe_line(cfg, key) for key, _label, _needs, _exe in STARTUP_PROBES]
+    lines += config_drift_lines(cfg)          # 两套配置打架时补一句"为什么红"
+    return lines
+
+
+# ================================================================ 部署脚本 ↔ 启动器配置 一致性
+# 这个仓库有两套路径配置，互不读取（2026-10-30 核实：launcher 里除注释外没有任何地方引用 common.ps1）：
+#   · `common.ps1` 顶部的 `$Global:UPSCALE_ROOT` / `UPSCALE_IO` —— 决定 .ps1 把环境装到哪；
+#   · 启动器的 `CONFIG["comfy_dir"] / input_dir / output_dir` —— 决定它去哪找。
+# 改了 ps1 的盘符，启动自检只会变红，却不说"为什么红"。这里把两边读出来比一比。
+# 注意：**只提示，不自动改任何一边** —— 谁是权威由用户决定。
+PS_VARS = ("UPSCALE_ROOT", "UPSCALE_IO")
+
+
+def ps_config_paths(cfg, path=None):
+    """读 `common.ps1` 顶部的两个路径变量。文件不存在/读不动时返回 {}。"""
+    p = path or os.path.join(str((cfg or {}).get("deploy_root", "") or ""), "common.ps1")
+    try:
+        with open(p, encoding="utf-8-sig") as fh:      # 该文件带 BOM
+            text = fh.read()
+    except OSError:
+        return {}
+    out = {}
+    for name in PS_VARS:
+        m = re.search(r"^\s*\$Global:%s\s*=\s*'([^']*)'" % name, text, re.M)
+        if m:
+            out[name] = m.group(1).strip().rstrip("\\/")
+    return out
+
+
+def _under(base, path):
+    """path 是否在 base 之下（同盘同目录前缀；大小写不敏感，Windows 语义）。"""
+    try:
+        b = os.path.normcase(os.path.abspath(base)).rstrip("\\/")
+        p = os.path.normcase(os.path.abspath(path))
+    except (TypeError, ValueError):
+        return True                                    # 路径怪就别报警，宁缺毋滥
+    return p == b or p.startswith(b + os.sep)
+
+
+def config_drift_lines(cfg):
+    """两套配置打架时给 [(提示, "warn")]，一致或读不到 ps1 时返回 []。"""
+    ps = ps_config_paths(cfg)
+    if not ps:
+        return []
+    cfg = cfg or {}
+    out = []
+
+    root, comfy = ps.get("UPSCALE_ROOT"), str(cfg.get("comfy_dir") or "")
+    if root and comfy and not _under(root, comfy):
+        out.append(("[注意] common.ps1 的 UPSCALE_ROOT=%s 与启动器 comfy_dir=%s 不同处 —— "
+                    "脚本会把环境装到前者，启动器却去后者找" % (root, comfy), "warn"))
+
+    io_dir = ps.get("UPSCALE_IO")
+    for key, label in (("input_dir", "输入目录"), ("output_dir", "输出目录")):
+        val = str(cfg.get(key) or "")
+        if io_dir and val and not _under(io_dir, val):
+            out.append(("[注意] common.ps1 的 UPSCALE_IO=%s 与启动器%s=%s 不同处"
+                        % (io_dir, label, val), "warn"))
+    return out
 
 
 # ================================================================ 设置项：展示 / 修改

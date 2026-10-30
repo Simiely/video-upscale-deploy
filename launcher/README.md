@@ -83,7 +83,7 @@
 | `部署卡.py` | **v1.5.0 切出**：App 的「缺失与部署」mixin（卡片 / 明细弹窗 / 一键装 / 恢复 / 项内进度），接法同 `服务面板.py` |
 | `提示词.py` | **v1.2.21 新增**：MiniMax H3 提示词装配（按官方 I2VA 结构补对齐句 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` 三字段） |
 | `verify_deploy.py` | 部署清单自检：逻辑断言（假环境）+ `--real` 真机盘点 + `--remote` 远端对账，**不参与打包** |
-| `tests/` | **v1.6.0**：46 个纯函数用例（unittest，不依赖 tkinter） |
+| `tests/` | **v1.6.0**：46 个纯函数用例（unittest，不依赖 tkinter）；`tests/manual/` 是两个必须真开窗口的冒烟脚本（界面 + exe） |
 | `发版.py` | **v1.6.0**：打包 + 整包 zip + 建 tag + 建 Release + 传资产（`--dry-run` 可干跑） |
 
 > 按 `AGENTS.md`「按阈值拆分」：单文件逻辑行超过 pylint 默认上限（1000）时才拆。`ui_kit.py` 是 v1.2.0 抽的，`运行时.py` 是 v1.2.5 抽的，v1.2.6 把日志行解析也归了进去（当时主文件到 1001，拆完回到 986）；v1.2.8 的落盘、v1.2.9 的启动自检同样放 `运行时.py`；v1.2.10 又拆了一次（`WORKFLOWS` / 子进程环境 / 显存探测 / 打开目录 / 输入校验下沉到 `运行时.py`，设置区整块交给 `ui_kit.SettingsList`）；**v1.2.11 把工作流详情整块（~70 行）搬成 `ui_kit.WorkflowDetail`**；v1.2.12 下拉弹出化后主文件 953 / 1000；**v1.2.14 把服务启停 / 批量任务 15 个方法拆成 `服务面板.py`，主文件 899 / 1000（余量 101）**；后续 v1.2.21 拆出 `提示词.py`（主文件回到 940 行），v1.2.23 新增纯数据模块 `部署清单.py`，另有不参与打包的 `verify_deploy.py`。依赖单向：`视频方案启动器.py` → `服务面板.py` → `ui_kit.py` / `运行时.py`。版本号在主文件的 `APP_VER` 常量（窗口标题会带它）。

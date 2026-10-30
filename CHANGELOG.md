@@ -4,6 +4,23 @@
 
 ---
 
+## v1.13.1 · 2026-10-30
+
+**工程侧收口（启动器 v1.6.1）：上 CI、收编手动冒烟脚本、两套路径配置加一致性提示。**
+
+### 新增
+- `.github/workflows/ci.yml`：两套用例（启动器 55 + VEHelper 17，py3.12/3.13）+
+  `pylint -E` / `vulture` + 文字规范（`.ps1` BOM、index 无 CRLF）。
+- `launcher/tests/manual/`：`smoke_ui.py`（真建 App + 9 条断言）与 `smoke_exe.py`
+  （按窗口标题确认 exe 开窗）——此前只存在于 gitignore 的 `_audit/`。
+- `运行时.config_drift_lines`：`common.ps1` 的 `UPSCALE_ROOT` / `UPSCALE_IO` 与启动器
+  `CONFIG` 不一致时，启动自检末尾提示一句；一致时安静。
+
+### 验证
+55 个用例全绿、`pylint -E` 10.00/10、vulture 零输出、`check_text.py` 通过；两个手动脚本实跑 PASS。
+
+---
+
 ## v1.13.0 · 2026-10-30
 
 **工程收口（启动器 v1.6.0）：补 46 个纯函数用例、发版收成一条命令、部署清单加远端对账。用户可见行为不变。**

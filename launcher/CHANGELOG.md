@@ -2,6 +2,32 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.6.1 · 2026-10-30
+
+**给仓库装 CI、把两个手动冒烟脚本收编、给两套路径配置加一致性提示。**
+
+### 新增
+- **`.github/workflows/ci.yml`**：push / PR 自动跑三件事 ——
+  ① 两套用例（启动器 55 个 + VEHelper 17 个，py3.12 / 3.13 双版本）；
+  ② `pylint --enable=E` + `vulture`（版本固定，免得规则漂移导致忽然变红）；
+  ③ `文字规范`（`.ps1` 必须带 BOM、index 里不得存 CRLF）。
+  ⚠️ VEHelper 那套必须在该子目录下跑（`import vehelper` 是包相对导入），
+  在仓库根跑会 `ModuleNotFoundError` —— 这条已写进 workflow 注释。
+- **`launcher/tests/manual/`**：两个必须真开窗口的冒烟脚本从 `_audit/`（gitignore）收编 ——
+  `smoke_ui.py`（真建 App + 9 条断言 + 截图）、`smoke_exe.py`（按窗口标题确认 exe 开窗）。
+  它们是"mixin 没接上"和"假发版"唯一能当场抓住的手段，文件丢了就得重踩坑。
+- **两套路径配置的一致性提示**：`运行时.ps_config_paths` 读 `common.ps1` 顶部的
+  `$Global:UPSCALE_ROOT` / `UPSCALE_IO`，`config_drift_lines` 与 `CONFIG` 比对，
+  不一致时在启动自检末尾补一行 `[注意] …（脚本装到 A，启动器却去 B 找）`。
+  **只提示、不改任何一边** —— 谁是权威由用户决定。两套配置平时一致，这条就安静不出现。
+
+### 验证
+- 55 个用例全绿（新增 9 条 `test_config.py`，含"前缀相同但不是子目录不算一致"的反例）；
+  `pylint -E` 10.00/10；vulture 零输出。
+- 本机实跑：`ps_config_paths` 正确读出 `C://AI` / `E://VideoUpscale`，两套一致 → 无提示，
+  `startup_lines` 仍是 6 行；`check_text.py` 报 11 个 `.ps1` 全带 BOM、index 无 CRLF。
+- 两个手动脚本在新路径实跑 PASS（`就绪 15/16`、exe 标题 `ComfyUI 启动器 v1.6.0`）。
+
 ## v1.6.0 · 2026-10-30
 
 **工程收口：补测试、把发版收成一条命令、给部署清单加远端对账。用户可见行为不变。**
