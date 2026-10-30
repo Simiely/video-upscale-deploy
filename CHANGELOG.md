@@ -17,6 +17,11 @@
   同一文件 ModelScope 8 段直连 98.4 MB/s、经 Clash 3.3 MB/s。`HF_PROXY` 仍可覆盖。
 - 细节与验证记录见 `launcher/CHANGELOG.md` v1.5.0。
 
+### 发版产物
+- `ComfyUI-Launcher-v1.5.0.exe` —— 单文件启动器
+- `video-upscale-deploy-v1.12.0.zip` —— 整包部署（含启动器 exe）
+- Release：<https://github.com/Simiely/video-upscale-deploy/releases/tag/v1.12.0>
+
 ### 未闭环
 - 20 GB 级下载只跑到 1.16 GB（5%）即按要求停止；Video2X 安装、ffmpeg 首次装仍未端到端实测。
   这三项继续挂在 `docs/交接-缺失下载部署.md` §9。

@@ -50,6 +50,11 @@
   `待处理：Video2X`，无重叠/裁切。
 - `verify_deploy.py` 16 项结构自检全 PASS。
 
+### 发版产物
+- `ComfyUI-Launcher-v1.5.0.exe` —— 单文件启动器（13,334,821 B，含 `pyi_rth__tkinter`）
+- `video-upscale-deploy-v1.12.0.zip` —— 整包（78 条目，含 `launcher/ComfyUI启动器.exe`）
+- Release：<https://github.com/Simiely/video-upscale-deploy/releases/tag/v1.12.0>
+
 ### 未闭环
 - **20 GB 级整链仍未跑完（§9 第 1 项）**：本次跑到 1.16 GB / 5% 时按用户要求停止。
   已验证「探测总长 → 8 段并行 → 进度回调 → 旁路暂存（`.download`）」；未验
