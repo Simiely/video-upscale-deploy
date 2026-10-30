@@ -85,6 +85,7 @@
 ```bash
 cd <部署根>/launcher                                             # 例如 C:\AI\video-upscale-deploy\launcher
 python 视频方案启动器.py                                          # 直接运行（自动认出部署根，无需配置）
+git ls-files --eol | grep "i/crlf"                           # 应为空：仓库内存 LF，规则见根 .gitattributes（2026-10-30 加）
 taskkill /F /IM ComfyUI启动器.exe                                 # 打包前清残留（会锁 dist）
 export TCL_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tcl8.6'   # 必设，否则打出无 tkinter 的坏 exe
 export TK_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tk8.6'     # 同上

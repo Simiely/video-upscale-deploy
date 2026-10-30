@@ -1,0 +1,23 @@
+# 行尾统一（Windows-only 项目，但仓库里一律存 LF）
+#
+# 为什么需要这个文件（2026-10-30 踩了两次）：
+#   · 两份克隆对比时 `diff -rq` 报了 25 个"不同"，其实每个文件只差 1 字节的 CRLF；
+#   · 用 Python 重写文件（默认写 \n）会让 git 把整文件判成重写（CHANGELOG 一度 2032 行）。
+# 光靠各人本地的 core.autocrlf 不保险——它跟克隆时机有关，两个副本会不一致。
+# 写死在这里之后：仓库内永远是 LF，Windows 检出一律 CRLF，两边都稳定。
+* text=auto
+
+# Windows 原生文本：检出必须 CRLF（记事本 / PowerShell ISE 才不会显示成一行）
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# 其余文本按平台默认（Windows 下 CRLF），显式写出来免得多台机器行为不一
+*.py    text
+*.md    text
+*.json  text
+*.spec  text
+*.yml   text
+*.yaml  text
+*.gitignore text
