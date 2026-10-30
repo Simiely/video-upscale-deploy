@@ -277,6 +277,32 @@ class LogFile:
             return          # 句柄已失效或已关闭：关闭失败无需上报
 
 
+def prune_logs(log_dir, keep_days=7, prefix="运行"):
+    """删掉 log_dir 里超过 keep_days 天的旧日志（按 mtime）；失败静默。
+
+    为什么要有它：v1.6.1 起 `log_to_file` 默认开（排障靠它），不清理的话
+    `logs/` 会无限增长。只删 `prefix-*.log`，不碰目录里别的东西。
+    """
+    try:
+        if not os.path.isdir(log_dir):
+            return 0
+        cutoff = time.time() - keep_days * 86400
+        n = 0
+        for fn in os.listdir(log_dir):
+            if not fn.startswith(prefix + "-") or not fn.endswith(".log"):
+                continue
+            p = os.path.join(log_dir, fn)
+            try:
+                if os.path.getmtime(p) < cutoff:
+                    os.remove(p)
+                    n += 1
+            except OSError:
+                pass
+        return n
+    except Exception:
+        return 0
+
+
 class NoopLog:
     """开关关闭时的占位对象：让日志漏斗不必写 if 判断。"""
 

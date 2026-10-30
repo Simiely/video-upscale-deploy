@@ -42,7 +42,7 @@ from ui_kit import (
 # ---------------------------------------------------------------- 配置
 APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-APP_VER = "v1.6.1"                                  # 窗口标题与文档基线共用；发版必更
+APP_VER = "v1.6.2"                                  # 窗口标题与文档基线共用；发版必更
 CONFIG = {
     "comfy_dir":    r"C:\AI\ComfyUI",
     "comfy_py":     r"C:\AI\ComfyUI\.venv\Scripts\python.exe",
@@ -52,6 +52,7 @@ CONFIG = {
     "output_dir":   r"E:\VideoUpscale\output",
     "comfy_url":    "http://127.0.0.1:8188",
     "log_dir":      os.path.join(APP_DIR, "logs"),   # 日志落盘目录（开关见 log_to_file）
+    "log_to_file":  True,                            # 默认落盘（v1.6.2 起）；启动器配置.json 可改 false
 }
 
 def _autodetect_deploy_root():
@@ -184,6 +185,7 @@ class App(服务面板.服务面板, 部署卡.部署卡):
         self._syncing = False           # 上排高度实测中（防 update_idletasks 重入）
         self._nvsmi_ok = True           # nvidia-smi 是否可用（不可用就不再反复起进程）
         # 日志落盘旁路（v1.2.8）：默认关闭；关着时是 NoopLog，日志漏斗处就不必判空
+        rt.prune_logs(CONFIG["log_dir"])               # 先清 7 天前的旧日志，再开新文件
         self.logfile = rt.LogFile(CONFIG["log_dir"]) if CONFIG.get("log_to_file") else rt.NoopLog()
         if self.logfile.degraded:
             self.log("[日志] 落盘失败，已降级为不落盘：%s" % self.logfile.degraded, "warn")

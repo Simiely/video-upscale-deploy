@@ -4,68 +4,46 @@
 
 ---
 
+## v1.13.2 · 2026-10-30
+
+**修「恢复」撞名毁画布原件的隐患（问题 3/4）+ 日志默认落盘。**
+
+- `restore_workflows` 铺出的 API 图加 `[API] ` 前缀：ComfyUI 工作流目录里的同名文件是
+  画布原件（UI 格式），仓库里是 API 图，原实现清空目录后恢复会顶替画布原件。
+  本机已执行：11 个 `[API] ` 图铺入，画布原件 md5 未动；清单仍 15/16。
+- `log_to_file` 默认开，启动时清理 7 天前的旧 `运行-*.log`。
+- `verify_deploy.py` 瘦身（逻辑断言迁 `tests/test_deploy.py`）；文档去重
+  （根 CHANGELOG 三条压缩成指针，AGENTS 基线只留最近三条，旧条目入 `docs/版本历史.md`）。
+
+---
+
 ## v1.13.1 · 2026-10-30
 
-**工程侧收口（启动器 v1.6.1）：发版补用例门槛、收编手动冒烟脚本、两套路径配置加一致性提示。**
+**工程侧收口（启动器 v1.6.1）。** 发版脚本打包前强制跑两套用例（55 + 17，无 tkinter，失败即中止）；
+`launcher/tests/manual/` 收编两个必须真开窗口的冒烟脚本；`tools/check_text.py` 查 `.ps1` BOM/行尾；
+`运行时.config_drift_lines` 提示 `common.ps1` 与启动器 CONFIG 的路径不一致。
+**CI 未启用**：改 workflow 文件要求 PAT 带 `workflow` scope，手上 token 只有 `repo`。
 
-### 新增
-- `发版.py` 打包前强制跑两套用例（55 + 17，都无 tkinter 依赖，0.6 秒），失败即中止发版；
-  另附 `tools/check_text.py`（`.ps1` BOM、index 无 CRLF）可手动跑。
-  CI 未启用：改 workflow 文件要求 PAT 带 `workflow` scope，手上的 token 只有 `repo`。
-- `launcher/tests/manual/`：`smoke_ui.py`（真建 App + 9 条断言）与 `smoke_exe.py`
-  （按窗口标题确认 exe 开窗）——此前只存在于 gitignore 的 `_audit/`。
-- `运行时.config_drift_lines`：`common.ps1` 的 `UPSCALE_ROOT` / `UPSCALE_IO` 与启动器
-  `CONFIG` 不一致时，启动自检末尾提示一句；一致时安静。
-
-### 验证
-55 个用例全绿、`pylint -E` 10.00/10、vulture 零输出、`check_text.py` 通过；两个手动脚本实跑 PASS。
+---
 
 ---
 
 ## v1.13.0 · 2026-10-30
 
-**工程收口（启动器 v1.6.0）：补 46 个纯函数用例、发版收成一条命令、部署清单加远端对账。用户可见行为不变。**
+**启动器 v1.5.0：模块拆分（主文件 1227 → 856、运行时 1188 → 753，新增 `部署卡.py` / `部署下载.py`）；
+体积口径统一 10⁹；下载代理按源分治（ModelScope 直连）。** 发了 Release v1.13.0。
+详情见 `launcher/CHANGELOG.md` v1.5.0。
 
-### 新增
-- `.gitattributes`：仓库内存 LF、Windows 检出一律 CRLF。起因是同一天被咬两次 ——
-  两份克隆 `diff -rq` 报 25 个「不同」（每个只差 1 字节），以及用脚本重写文件后
-  git 把 CHANGELOG 判成整文件重写（2032 行）。
-- `launcher/tests/`：46 个 unittest（不依赖 tkinter，0.6 秒跑完）。
-- `launcher/发版.py`：一条命令完成打包 + 整包 zip + 建 tag + 建 Release + 传资产。
-- `verify_deploy.py --real / --remote`：真机盘点 + 与 ModelScope 远端逐文件对账。
-
-### 修正
-- `部署清单.py` 新增 `hf_path` 覆盖字段：SeedVR2 权重在仓库根目录、本地在 `models/SEEDVR2/` 下，
-  按「去 models/ 前缀」推导会 404（`--remote` 第一次跑就报出来了）。
-- `verify_deploy.py` 的样例输出标注【假环境】，不再被误读成真机盘点。
-
-### 验收项关闭
-20 GB 整链、Video2X 安装、ffmpeg 首装三项**不再验收**（用户决定）。理由与已验证到哪一步
-见 `docs/交接-缺失下载部署.md` §9.1，保留那份记录只为避免后来人重开。
+---
 
 ---
 
 ## v1.12.0 · 2026-10-30
 
-**启动器 v1.5.0：模块规模回到阈值内（拆 `部署卡.py` / `部署下载.py`）+ 体积口径统一到 10⁹ + 下载代理按源分治。交接清单 §9 只剩验收项。**
+**启动器 v1.4.0：交接清单 P1/P2 六项落地（磁盘预检 / ffmpeg 一键装 / torch 自检 / 代理探测 /
+项内进度 / GitHub 镜像回退）。** 详情见 `launcher/CHANGELOG.md` v1.4.0。
 
-### 变更
-- **拆分（§9 第 4 项）**：主文件 1227 → **856** LLOC、`运行时.py` 1188 → **753**；
-  新增 `launcher/部署卡.py`（387，部署卡界面 mixin）与 `launcher/部署下载.py`（442，清单探测 / 分段下载 / 镜像回退 / ffmpeg 安装 / 磁盘预检）。六个模块全部 < 1000，依赖仍单向。
-- **体积口径（§9 第 3 项）**：`human_size` 从 `1024³` 改 10⁹（AGENTS 口径），界面读数整体大 7%
-  —— H3 扩散模型显示 20.97 GB（原 19.53）；`部署清单.py` 5 处 `desc` 同步改正（§9 记的是 1 处）。
-- **代理按源分治**：ModelScope 直连、hf-mirror 与 GitHub 才走代理。依据是 20 GB 整链实测：
-  同一文件 ModelScope 8 段直连 98.4 MB/s、经 Clash 3.3 MB/s。`HF_PROXY` 仍可覆盖。
-- 细节与验证记录见 `launcher/CHANGELOG.md` v1.5.0。
-
-### 发版产物
-- `ComfyUI-Launcher-v1.5.0.exe` —— 单文件启动器
-- `video-upscale-deploy-v1.12.0.zip` —— 整包部署（含启动器 exe）
-- Release：<https://github.com/Simiely/video-upscale-deploy/releases/tag/v1.12.0>
-
-### 未闭环
-- 20 GB 级下载只跑到 1.16 GB（5%）即按要求停止；Video2X 安装、ffmpeg 首次装仍未端到端实测。
-  这三项继续挂在 `docs/交接-缺失下载部署.md` §9。
+---
 
 ---
 
