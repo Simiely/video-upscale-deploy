@@ -6,11 +6,12 @@
 
 ## v1.13.1 · 2026-10-30
 
-**工程侧收口（启动器 v1.6.1）：上 CI、收编手动冒烟脚本、两套路径配置加一致性提示。**
+**工程侧收口（启动器 v1.6.1）：发版补用例门槛、收编手动冒烟脚本、两套路径配置加一致性提示。**
 
 ### 新增
-- `.github/workflows/ci.yml`：两套用例（启动器 55 + VEHelper 17，py3.12/3.13）+
-  `pylint -E` / `vulture` + 文字规范（`.ps1` BOM、index 无 CRLF）。
+- `发版.py` 打包前强制跑两套用例（55 + 17，都无 tkinter 依赖，0.6 秒），失败即中止发版；
+  另附 `tools/check_text.py`（`.ps1` BOM、index 无 CRLF）可手动跑。
+  CI 未启用：改 workflow 文件要求 PAT 带 `workflow` scope，手上的 token 只有 `repo`。
 - `launcher/tests/manual/`：`smoke_ui.py`（真建 App + 9 条断言）与 `smoke_exe.py`
   （按窗口标题确认 exe 开窗）——此前只存在于 gitignore 的 `_audit/`。
 - `运行时.config_drift_lines`：`common.ps1` 的 `UPSCALE_ROOT` / `UPSCALE_IO` 与启动器

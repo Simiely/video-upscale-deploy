@@ -81,7 +81,7 @@ def changelog_section(md_path, version):
 
 # ---------------------------------------------------------------- 1. 前置检查
 def preflight(args):
-    print("[1/5] 前置检查")
+    print("[1/6] 前置检查")
     status = git("status", "--porcelain").stdout.strip()
     if status:
         raise SystemExit("工作区不干净，先提交：\n%s" % status)
@@ -106,13 +106,38 @@ def preflight(args):
     return head
 
 
-# ---------------------------------------------------------------- 2. 打包
+# ---------------------------------------------------------------- 2. 用例（发版前必过）
+# 为什么放在发版流程里而不是靠 CI：这个仓库没有 CI（GitHub 要求 workflow 文件的 PAT 带
+# `workflow` scope，手上的 token 只有 `repo`），而"改完记得跑用例"是纯记忆。
+# 两套用例都不依赖 tkinter，任何 python 3.12+ 都能跑，成本 0.6 秒。
+SUITES = (
+    ("启动器", HERE, "tests"),
+    ("VEHelper", os.path.join(DEPLOY_ROOT, "04-VisualEnhancer"), "tests"),
+)
+
+
+def run_tests(args):
+    if args.skip_tests:
+        print("[2/6] 用例：跳过（--skip-tests）")
+        return
+    print("[2/6] 用例（发版前必过）")
+    for name, cwd, start in SUITES:
+        r = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", start],
+                           cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=600)
+        tail = [ln for ln in (r.stderr or "").strip().splitlines() if ln.strip()][-2:]
+        print("  %-8s %s" % (name, " / ".join(tail) or "(无输出)"))
+        if r.returncode != 0:
+            raise SystemExit("用例失败，中止发版：%s\n%s" % (name, (r.stderr or "")[-800:]))
+
+
+# ---------------------------------------------------------------- 3. 打包
 def build(args):
     exe = os.path.join(DIST, EXE_NAME)
     if args.skip_build:
-        print("[2/5] 打包：跳过（--skip-build），复用 %s" % exe)
+        print("[3/6] 打包：跳过（--skip-build），复用 %s" % exe)
     else:
-        print("[2/5] 打包 exe")
+        print("[3/6] 打包 exe")
         run(["taskkill", "/F", "/IM", EXE_NAME], check=False)      # 运行中的 exe 会锁 dist
         env = dict(os.environ)
         # 必须**强制覆盖**：父进程可能是别的 PyInstaller 程序，留着它自己的 TCL_LIBRARY，
@@ -142,7 +167,7 @@ def build(args):
 
 # ---------------------------------------------------------------- 3. 整包 zip
 def make_zip(args, exe):
-    print("[3/5] 生成整包 zip")
+    print("[4/6] 生成整包 zip")
     out = os.path.join(DIST, "video-upscale-deploy-%s.zip" % args.version)
     run(["git", "archive", "--format=zip", "-o", out, "HEAD"], cwd=DEPLOY_ROOT)
     with zipfile.ZipFile(out, "a", zipfile.ZIP_DEFLATED) as z:
@@ -192,7 +217,7 @@ def publish(args, exe, exe_size, zip_path, head):
     exe_asset = "ComfyUI-Launcher-%s.exe" % args.launcher
     zip_asset = os.path.basename(zip_path)
 
-    print("[4/5] 建 tag 与 Release（%s）" % repo)
+    print("[5/6] 建 tag 与 Release（%s）" % repo)
     if args.dry_run:
         print("  [dry-run] 将建 tag %s @ %s，Release 资产：%s / %s"
               % (args.version, head[:12], exe_asset, zip_asset))
@@ -216,7 +241,7 @@ def publish(args, exe, exe_size, zip_path, head):
     })
     print("  Release: %s" % rel["html_url"])
 
-    print("[5/5] 上传资产")
+    print("[6/6] 上传资产")
     for path, name in ((exe, exe_asset), (zip_path, zip_asset)):
         size = os.path.getsize(path)
         print("  %s（%.2f MB）…" % (name, size / 1e6))
@@ -234,9 +259,11 @@ def main():
     ap.add_argument("--launcher", required=True, help="启动器版本（须等于 APP_VER），如 v1.6.0")
     ap.add_argument("--dry-run", action="store_true", help="只打包与出 zip，不碰 GitHub")
     ap.add_argument("--skip-build", action="store_true", help="复用 dist 里已有 exe")
+    ap.add_argument("--skip-tests", action="store_true", help="跳过发版前的用例（不建议）")
     args = ap.parse_args()
 
     head = preflight(args)
+    run_tests(args)
     exe, exe_size = build(args)
     zip_path = make_zip(args, exe)
     publish(args, exe, exe_size, zip_path, head)

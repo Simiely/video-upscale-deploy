@@ -209,7 +209,7 @@ video-upscale-deploy/
 
 - 所有参数名、模型文件名、缩放倍数限制均以各项目**官方源码**为准，核对结果见 [docs/使用指南.md](docs/使用指南.md) 的「本次修订记录」。
 - 本仓库只含部署脚本与文档，不含任何模型权重；权重由安装脚本从 HuggingFace 拉取。
-- **CI 待激活**：`.github/ci-workflow.yml` 是 GitHub Actions 的模板（两套用例 + `pylint -E` + vulture + `.ps1` BOM/行尾检查）。GitHub 要求改 workflow 文件的 PAT 带 `workflow` scope，当前 token 只有 `repo`，所以先放在模板位置；激活方式见文件头注释。
+- **检查都在本地**：用例用 `python -m unittest discover -s launcher/tests`（VeHelper 那套在其子目录里跑）；发版时 `发版.py` 会自动跑两套、不过就中止；文字规范（`.ps1` BOM / index 行尾）用 `python tools/check_text.py`。没上 GitHub Actions —— 改 workflow 文件要求 PAT 带 `workflow` scope。
 - **体积口径**：全仓库按 **1 GB = 10⁹ 字节**（HuggingFace 口径）书写，启动器界面同口径。
   Windows 资源管理器显示的是 **GiB（2³⁰）**，同一个文件会小约 7% —— 例如 H3 扩散模型在这里写
   20.97 GB，资源管理器里是 19.53 GiB。看到「少了 1.4 GB」时先换算单位，不是下漏了。

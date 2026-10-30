@@ -4,15 +4,16 @@
 
 ## v1.6.1 · 2026-10-30
 
-**给仓库装 CI、把两个手动冒烟脚本收编、给两套路径配置加一致性提示。**
+**发版流程补上用例门槛、把两个手动冒烟脚本收编、给两套路径配置加一致性提示。**
 
 ### 新增
-- **`.github/workflows/ci.yml`**：push / PR 自动跑三件事 ——
-  ① 两套用例（启动器 55 个 + VEHelper 17 个，py3.12 / 3.13 双版本）；
-  ② `pylint --enable=E` + `vulture`（版本固定，免得规则漂移导致忽然变红）；
-  ③ `文字规范`（`.ps1` 必须带 BOM、index 里不得存 CRLF）。
+- **`发版.py` 新增「用例必过」步骤**：打包前先跑两套用例（启动器 55 + VEHelper 17），
+  失败即中止发版。两套都**不依赖 tkinter**，总耗时 0.6 秒，任何 python 3.12+ 都能跑。
   ⚠️ VEHelper 那套必须在该子目录下跑（`import vehelper` 是包相对导入），
-  在仓库根跑会 `ModuleNotFoundError` —— 这条已写进 workflow 注释。
+  在仓库根跑会 `ModuleNotFoundError` —— 已写进脚本注释。`--skip-tests` 可跳过（不建议）。
+- **`tools/check_text.py`**：手动跑的仓库文字规范检查 —— `.ps1` 必须带 BOM、index 里不得存
+  CRLF（`python tools/check_text.py`）。原本配给 GitHub Actions，但改 workflow 文件要求 PAT 带
+  `workflow` scope（手上 token 只有 `repo`），CI 未启用；脚本本身在本地照样有用。
 - **`launcher/tests/manual/`**：两个必须真开窗口的冒烟脚本从 `_audit/`（gitignore）收编 ——
   `smoke_ui.py`（真建 App + 9 条断言 + 截图）、`smoke_exe.py`（按窗口标题确认 exe 开窗）。
   它们是"mixin 没接上"和"假发版"唯一能当场抓住的手段，文件丢了就得重踩坑。
