@@ -45,9 +45,10 @@ def deploy_inventory(cfg):
         root = _resolve_deploy_root(cfg, it.get("root", "comfy_dir"))
         # 判定清单：多数项写死在 部署清单 里；「工作流目录」留空 = 以部署仓库 workflows/
         # 实际有哪些 json 为准（动态），这样上游加工作流不用改代码。
+        # 文件名要带 WORKFLOW_PREFIX —— 「恢复」铺的就是带前缀的名字（防与画布原件撞名）。
         checks = list(it["check"])
         if not checks and it.get("restore") == "workflows":
-            checks = ["user/default/workflows/" + fn for fn in workflow_files(cfg)]
+            checks = ["user/default/workflows/" + WORKFLOW_PREFIX + fn for fn in workflow_files(cfg)]
         if not checks:
             rows.append((it["key"], it["name"], "缺失",
                          "部署仓库里没找到 workflows 目录，无法判定", None, 0, it["script"]))
@@ -117,15 +118,27 @@ def path_size(p):
     return total
 
 
+# 「恢复」铺进 ComfyUI 工作流目录的文件名前缀。
+# 为什么必须加（2026-10-30 实测）：那个目录里的同名文件是**画布原件**（UI 格式，
+# 如 MiniMax-H3-图生视频I2V.json 有 69 KB），仓库里是**API 图**（同名、只有 6.9 KB）。
+# 不加前缀的话，目录被清空后点一次「恢复」，API 图就会顶替画布原件的名字 ——
+# 之后「加载到画布」打开的是一张空图，而且没有任何报错。
+WORKFLOW_PREFIX = "[API] "
+
+# 这些子目录里的 json 是残次品/重叠档（见根 .gitignore），仓库不留、也不铺进 ComfyUI
+SKIP_WORKFLOW_DIRS = ("_弃用-工作流",)
+
+
 def workflow_files(cfg):
-    """部署仓库 `workflows/` 下所有 json 的**文件名**（扁平）。
+    """部署仓库 `workflows/` 下所有 json 的**文件名**（扁平，不带前缀）。
 
     为什么扁平：启动器扫工作流目录只看顶层（`scan_workflows` 用 `os.listdir`），
     而仓库里是按 FlashVSR / SeedVR2 / MiniMax 分子目录存的 —— 铺的时候必须压平。
     """
     src = os.path.join(str((cfg or {}).get("deploy_root", "") or ""), "workflows")
     out = []
-    for _dirpath, _dirnames, files in os.walk(src):
+    for dirpath, dirnames, files in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_WORKFLOW_DIRS]
         for fn in files:
             if fn.lower().endswith(".json"):
                 out.append(fn)
@@ -135,6 +148,8 @@ def workflow_files(cfg):
 def restore_workflows(cfg):
     """把部署仓库 workflows/ 下的 json 铺进 ComfyUI 的工作流目录（幂等：已存在就跳过）。
 
+    文件名加 `WORKFLOW_PREFIX`：目录里的同名文件可能是画布原件（UI 格式），
+    绝不能被仓库的 API 图顶替（见 WORKFLOW_PREFIX 的注释）。
     返回 (复制数, 跳过数, 说明)。目录不存在会自动建 —— 这正是「工作流目录缺失」时的修复动作。
     """
     dep_root = str((cfg or {}).get("deploy_root", "") or "")
@@ -146,11 +161,12 @@ def restore_workflows(cfg):
         return 0, 0, "comfy_dir 没配置，无法定位工作流目录"
     os.makedirs(dst, exist_ok=True)
     copied = skipped = 0
-    for dirpath, _dirnames, files in os.walk(src):
+    for dirpath, dirnames, files in os.walk(src):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_WORKFLOW_DIRS]
         for fn in files:
             if not fn.lower().endswith(".json"):
                 continue
-            target = os.path.join(dst, fn)
+            target = os.path.join(dst, WORKFLOW_PREFIX + fn)
             if os.path.exists(target):
                 skipped += 1
                 continue

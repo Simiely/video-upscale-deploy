@@ -7,6 +7,7 @@
   2. `deploy_inventory` 的三态状态机（就绪 / 不完整 / 缺失）——2026-10-30 之前
      verify_deploy 只在临时目录里"看一眼"，没有断言，改坏了也没人知道。
 """
+import json
 import os
 import sys
 import tempfile
@@ -134,6 +135,52 @@ class TestDiskCheck(unittest.TestCase):
         ok, _free, need, _root = dw.disk_check({"comfy_dir": tempfile.gettempdir()}, item)
         self.assertEqual(need, 0)
         self.assertTrue(ok)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestRestoreWorkflows(unittest.TestCase):
+    """「恢复」铺的是 API 图，ComfyUI 目录里的同名文件是画布原件 —— 撞名会毁数据。"""
+
+    def setUp(self):
+        base = tempfile.mkdtemp()
+        self.dep = os.path.join(base, "dep")
+        os.makedirs(os.path.join(self.dep, "workflows"))
+        self.comfy = os.path.join(base, "comfy")
+        self.wfdir = os.path.join(self.comfy, "user", "default", "workflows")
+        os.makedirs(self.wfdir)
+        self.fn = "FlashVSR-放大2x-有声素材.json"
+        with open(os.path.join(self.dep, "workflows", self.fn), "w", encoding="utf-8") as fh:
+            json.dump({"1": {"class_type": "X"}}, fh)                     # API 格式
+        self.canvas = os.path.join(self.wfdir, self.fn)
+        with open(self.canvas, "w", encoding="utf-8") as fh:
+            json.dump({"nodes": [], "links": []}, fh)                     # 画布原件（UI 格式）
+        self.canvas_bytes = open(self.canvas, "rb").read()
+        self.cfg = {"deploy_root": self.dep, "comfy_dir": self.comfy}
+
+    def test_铺出来的文件带前缀(self):
+        copied, _skipped, _msg = dw.restore_workflows(self.cfg)
+        self.assertEqual(copied, 1)
+        self.assertTrue(os.path.exists(
+            os.path.join(self.wfdir, dw.WORKFLOW_PREFIX + self.fn)))
+
+    def test_画布原件一字节不动(self):
+        dw.restore_workflows(self.cfg)
+        self.assertEqual(open(self.canvas, "rb").read(), self.canvas_bytes)
+
+    def test_再点一次是幂等跳过(self):
+        dw.restore_workflows(self.cfg)
+        copied, skipped, _msg = dw.restore_workflows(self.cfg)
+        self.assertEqual((copied, skipped), (0, 1))
+
+    def test_清单判定认前缀名(self):
+        rows = {r[0]: r for r in dw.deploy_inventory(self.cfg)}
+        self.assertEqual(rows["workflows"][2], "缺失")        # 只有画布原件，没有带前缀的 API 图
+        dw.restore_workflows(self.cfg)
+        rows = {r[0]: r for r in dw.deploy_inventory(self.cfg)}
+        self.assertEqual(rows["workflows"][2], "就绪")
 
 
 if __name__ == "__main__":
