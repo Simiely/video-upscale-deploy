@@ -8,7 +8,12 @@
 #   check   判定文件列表（相对 root；全部存在才算就绪）
 #   expect  期望字节数（None = 目录型/不单文件校验；整数 = 每个 check 文件都按它校验；
 #           元组 = 与 check 一一对应的逐文件期望值）
-#   hf      HF 仓库（"org/repo"）；有它才能「下载」单文件（仓库内路径由 check 去掉 models/ 前缀得到）
+#   hf      HF 仓库（"org/repo"）；有它才能「下载」单文件
+#   hf_path **可选**：仓库内路径的显式覆盖（字符串或与 check 等长的列表）。
+#           不写时按「check 去掉 models/ 前缀」推导 —— 那对 H3 成立（仓库里就是
+#           diffusion_models/…、vae/…），但 SeedVR2 的权重在仓库**根目录**，
+#           本地却落在 models/SEEDVR2/ 下，推导会得到 SEEDVR2/xxx 而 404
+#           （2026-10-30 加 --remote 对账时才发现）。
 #   script  一键安装脚本（相对 deploy_root；"" = 暂无脚本）
 #   installer  内置 Python 安装器名（v1.4.0；"ffmpeg" = 走 运行时.install_ffmpeg，不用 .ps1）
 #   install_bytes  脚本/内置安装器的估算体积（v1.4.0；仅用于「磁盘空间预检」）
@@ -90,12 +95,18 @@ DEPLOY_ITEMS = (
          desc="方案三引擎节点（numz，v2.5.24）"),
     dict(key="w_seedvr2_fp8", group="seedvr2", name="SeedVR2 3B FP8 权重", root="comfy_dir",
          check=("models/SEEDVR2/seedvr2_ema_3b_fp8_e4m3fn.safetensors",),
-         expect=3391544696,  # 3.39 GB（hf-mirror 2026-10-26 复核）
+         expect=3391544696,  # 3.39 GB（ModelScope API 2026-10-30 复核，与远端逐字节一致）
+         hf="numz/SeedVR2_comfyUI",
+         hf_path="seedvr2_ema_3b_fp8_e4m3fn.safetensors",   # 仓库根目录，不在 SEEDVR2/ 下
+         sha256=("3bf1e43ebedd570e7e7a0b1b60d6a02e105978f505c8128a241cde99a8240cff",),
          script="03-SeedVR2/安装SeedVR2.ps1",
          desc="numz/SeedVR2_comfyUI · 3.39 GB"),
     dict(key="w_seedvr2_vae", group="seedvr2", name="SeedVR2 VAE", root="comfy_dir",
          check=("models/SEEDVR2/ema_vae_fp16.safetensors",),
-         expect=501324814,  # 0.50 GB（hf-mirror 2026-10-26 复核）
+         expect=501324814,  # 0.50 GB（ModelScope API 2026-10-30 复核，与远端逐字节一致）
+         hf="numz/SeedVR2_comfyUI",
+         hf_path="ema_vae_fp16.safetensors",                # 仓库根目录
+         sha256=("20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",),
          script="03-SeedVR2/安装SeedVR2.ps1",
          desc="numz/SeedVR2_comfyUI · 0.50 GB"),
 
@@ -174,7 +185,16 @@ def sha256_of(item):
 
 
 def hf_paths_of(item):
-    """check 里的相对路径 → HF 仓库内路径（去掉 ComfyUI 的 models/ 前缀）。"""
+    """check 里的相对路径 → HF 仓库内路径。
+
+    优先用条目的 `hf_path`（显式覆盖，字符串或与 check 等长的列表）；没写才按
+    「去掉 models/ 前缀」推导。推导只对"仓库目录 == models 子目录"的仓库成立（H3 是），
+    SeedVR2 的权重在仓库**根目录**、本地却在 models/SEEDVR2/ 下，必须显式写 hf_path，
+    否则单文件下载会 404（2026-10-30 用 --remote 对账时才发现）。
+    """
+    override = item.get("hf_path")
+    if override:
+        return [override] if isinstance(override, str) else list(override)
     out = []
     for rel in item["check"]:
         rel = rel.replace("\\", "/")
