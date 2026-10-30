@@ -1,9 +1,10 @@
-# 验证脚本：仅用于本地校验 部署清单.py + 运行时.deploy_inventory（非仓库运行时依赖）
+# 验证脚本：仅用于本地校验 部署清单.py + 部署下载.deploy_inventory（非仓库运行时依赖）
 import os
 import sys
 import tempfile
 
 import 运行时 as rt
+import 部署下载 as dw
 from 部署清单 import DEPLOY_ITEMS, has_installer
 
 ok = True
@@ -37,7 +38,7 @@ with open(os.path.join(comfy, "models", "SEEDVR2", "seedvr2_ema_3b_fp8_e4m3fn.sa
 # w_seedvr2_vae：不存在 → 缺失
 
 cfg = {"comfy_dir": comfy, "ffmpeg_dir": ""}  # video2x 用绝对路径 C:\AI\Video2X（沙箱不存在）
-rows = rt.deploy_inventory(cfg)
+rows = dw.deploy_inventory(cfg)
 by = {r[0]: r for r in rows}
 check(len(rows) == 16, "deploy_inventory 返回 16 行")
 check(by["comfy_base"][2] == "就绪", "comfy_base → 就绪")

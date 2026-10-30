@@ -15,6 +15,9 @@
 #   desc    一句话描述
 #
 # 数据实测于 2026-10-26，与 docs/交接-缺失下载部署.md §4 一致。
+# ★ 体积口径（AGENTS 约定）：一律 1 GB = 10⁹ 字节（HuggingFace 口径）。
+#   desc 里的人读数字必须与 expect 字节数同口径换算，别抄 Windows 资源管理器的 GiB 值
+#   （GiB 比 GB 小约 7%：20.97 GB 在资源管理器里显示 19.53 GiB）。
 # w_seedvr2_fp8 / w_seedvr2_vae 两项目标大小由 hf-mirror API 于 2026-10-26 复核补全。
 # H3 四项的 hf / expect 由 hf-mirror tree API 逐文件实测（字节数取 API 原值，不是"整数 GB 估算"）。
 #
@@ -78,7 +81,7 @@ DEPLOY_ITEMS = (
     dict(key="w_flashvsr", group="flashvsr", name="FlashVSR v1.1 权重", root="comfy_dir",
          check=("models/FlashVSR-v1.1",), expect=None,  # 目录型；全仓 8 文件 ≈ 6.47 GB
          script="02-FlashVSR/安装FlashVSR.ps1",
-         desc="JunhaoZhuang/FlashVSR-v1.1（约 6.47 GB）"),
+         desc="JunhaoZhuang/FlashVSR-v1.1（约 6.95 GB）"),
 
     # ---------- 方案三：SeedVR2 ----------
     dict(key="node_seedvr2", group="seedvr2", name="SeedVR2 节点", root="comfy_dir",
@@ -87,14 +90,14 @@ DEPLOY_ITEMS = (
          desc="方案三引擎节点（numz，v2.5.24）"),
     dict(key="w_seedvr2_fp8", group="seedvr2", name="SeedVR2 3B FP8 权重", root="comfy_dir",
          check=("models/SEEDVR2/seedvr2_ema_3b_fp8_e4m3fn.safetensors",),
-         expect=3391544696,  # 3.16 GB（hf-mirror 2026-10-26 复核）
+         expect=3391544696,  # 3.39 GB（hf-mirror 2026-10-26 复核）
          script="03-SeedVR2/安装SeedVR2.ps1",
-         desc="numz/SeedVR2_comfyUI · 3.16 GB"),
+         desc="numz/SeedVR2_comfyUI · 3.39 GB"),
     dict(key="w_seedvr2_vae", group="seedvr2", name="SeedVR2 VAE", root="comfy_dir",
          check=("models/SEEDVR2/ema_vae_fp16.safetensors",),
-         expect=501324814,  # 0.47 GB（hf-mirror 2026-10-26 复核）
+         expect=501324814,  # 0.50 GB（hf-mirror 2026-10-26 复核）
          script="03-SeedVR2/安装SeedVR2.ps1",
-         desc="numz/SeedVR2_comfyUI · 0.47 GB"),
+         desc="numz/SeedVR2_comfyUI · 0.50 GB"),
 
     # ---------- 方案四：MiniMax H3（huggingface 单文件补下） ----------
     dict(key="w_h3_dit", group="h3", name="H3 扩散模型", root="comfy_dir",
@@ -114,12 +117,12 @@ DEPLOY_ITEMS = (
          hf="Comfy-Org/MiniMax-H3", script="",
          sha256=("52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e",
                  "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"),
-         desc="Comfy-Org/MiniMax-H3 · 2.62 + 0.56 GB"),
+         desc="Comfy-Org/MiniMax-H3 · 2.81 + 0.61 GB"),
     dict(key="w_h3_lora", group="h3", name="H3 turbo LoRA", root="comfy_dir",
          check=("models/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",),
          expect=1956193000, hf="Comfy-Org/MiniMax-H3",
          sha256=("2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e",),
-         script="", desc="MiniMax-H3 · 1.82 GB"),
+         script="", desc="MiniMax-H3 · 1.96 GB"),
 )
 
 

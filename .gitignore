@@ -26,3 +26,7 @@ output/
 
 # 弃用工作流（残次品/重叠档，只留本地备查，不入库）
 workflows/_弃用-工作流/
+# 验证脚本与实测日志（AGENTS 验证纪律；不入仓库）
+_audit/
+# 本机工作记录（WorkBuddy 会话记忆，不入库）
+.workbuddy/

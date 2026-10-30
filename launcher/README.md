@@ -70,7 +70,7 @@
 | `log_to_file` | 未设置（= 关闭） | 置 `true` 后把日志区内容同时写入 `log_dir` |
 
 
-## 源码结构（v1.3.0 起 7 个 py 模块）
+## 源码结构（v1.5.0 起 9 个 py 模块）
 
 | 文件 | 说明 |
 |---|---|
@@ -79,6 +79,8 @@
 | `ui_kit.py` | 深色自绘控件库 + 设计令牌（含 `SettingsList` 设置项列表、`ask_text` 模态输入弹窗、`WorkflowDetail` 工作流详情）（**不 import 业务代码**） |
 | `运行时.py` | 与界面无关的运行时支撑：子进程"不弹黑窗"标记 / 崩溃落盘 / 绕代理 HTTP / **日志行解析与清洗**（ANSI 剥离、进度、级别、着色分类）/ **日志落盘**（`LogFile`、`NoopLog`）/ **启动自检**（`probe_path`、`startup_lines`）/ **设置项读写与打开**（`config_items`、`save_config`、`open_path`）/ **工作流 API 图取用与 UI→API 转换**（`pick_api`、`load_api`、`read_workflow`、`apply_input`、`apply_patch`、`ui_to_api`）/ **工作流目录扫描**（`scan_workflows`）/ **部署探测与下载**（`deploy_inventory`、`path_size`、`restore_workflows`、`hf_pull`）/ 内置工作流清单（**不 import 业务代码，也不 import tkinter**） |
 | `部署清单.py` | **v1.2.23 新增**：部署清单纯数据（`GROUPS` 5 组 + `DEPLOY_ITEMS` 16 项：判定文件 / 期望大小 / 安装脚本 / HF 仓库 / sha256），UI 不自己写死分类 |
+| `部署下载.py` | **v1.5.0 切出**：联网与部署 —— 清单探测、ModelScope 优先 + 8 段并行 + sha256、GitHub 镜像回退、ffmpeg 内置安装、磁盘预检；**代理按源分治**（ModelScope 直连，hf-mirror / GitHub 走代理） |
+| `部署卡.py` | **v1.5.0 切出**：App 的「缺失与部署」mixin（卡片 / 明细弹窗 / 一键装 / 恢复 / 项内进度），接法同 `服务面板.py` |
 | `提示词.py` | **v1.2.21 新增**：MiniMax H3 提示词装配（按官方 I2VA 结构补对齐句 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music` 三字段） |
 | `verify_deploy.py` | 部署清单逻辑自检（字段齐全 / 7 元组 / 实际大小探测），命令行跑，**不参与打包** |
 
@@ -241,8 +243,10 @@ python 视频方案启动器.py       # 会自动认出 <部署根>，无需配�
 | 工作流目录一键恢复 | v1.2.29 | 压平铺进 ComfyUI，幂等 |
 | 磁盘空间预检 | v1.4.0 | 空间不够直接拦下，日志写明「剩 X / 需 Y」 |
 | ffmpeg 内置安装器 | v1.4.0 | BtbN gpl 包 → 解出 ffmpeg/ffprobe → rawvideo + libx265 能力探测；**不改注册表 PATH** |
-| 项内进度 | v1.4.0 | 弹窗该行就地显示 `下载 5% · 1.02 GB / 19.53 GB` |
+| 项内进度 | v1.4.0 | 弹窗该行就地显示 `下载 5% · 1.05 GB / 20.97 GB`（v1.5.0 起按 10⁹ 口径） |
 | 代理自动探测 | v1.4.0 | 7890/7891/10809/1080；`HF_PROXY=none` 强制直连 |
+| **代理按源分治** | v1.5.0 | ModelScope 直连、hf-mirror / GitHub 才走代理（同文件实测 98.4 MB/s ↔ 3.3 MB/s） |
+| **体积口径 10⁹** | v1.5.0 | 界面按 1 GB = 10⁹ 字节显示（HF 口径）；资源管理器显示的是 GiB，同一文件会小约 7%——H3 扩散模型这里写 20.97 GB、资源管理器写 19.53 GiB |
 | GitHub 镜像回退 | v1.4.0 | 直连 → ghproxy.net → gh-proxy.com，curl 续传 |
 
 ## 打包

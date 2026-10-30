@@ -2,6 +2,64 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.5.0 · 2026-10-30
+
+**新：把交接清单 §9 的最后两项落地 —— 模块规模回到阈值内（拆分 `部署卡.py` / `部署下载.py`）、体积口径统一到 10⁹；顺带修掉"代理不分源"的下载隐患。**
+
+### 变更
+- **模块拆分（§9 第 4 项）**：`视频方案启动器.py` 与 `运行时.py` 双双超 1000 行已挂账半个多月。
+  - 新增 `部署卡.py`（App 的 mixin，387 LLOC）：`_build_deploy_card` / `_deploy_action` /
+    `_refresh_deploy` / `_install_deploy` / `_restore_deploy` / 三个 `_run_deploy_*` /
+    `_deploy_item_progress` / `_set_deploy_row`，连同只有它在用的 `_size_text` / `_clip_text`。
+    接法照 `服务面板.py`：`部署卡.CONFIG = CONFIG` 注入同一个字典，App 改成
+    `class App(服务面板.服务面板, 部署卡.部署卡)`。
+  - 新增 `部署下载.py`（442 LLOC）：从 `运行时.py` 切出"联网与部署"整块 ——
+    部署清单探测（`deploy_inventory` / `path_size` / `workflow_files` / `restore_workflows`）、
+    ModelScope/hf-mirror 分段并行下载（`hf_pull` / `_parallel_download`）、
+    GitHub 镜像回退（`gh_download`）、ffmpeg 内置安装（`install_ffmpeg` / `ffmpeg_capable`）、
+    磁盘预检（`disk_free` / `disk_check`）与代理策略。
+  - 结果（radon raw LLOC）：主文件 **1227 → 856**、`运行时.py` **1188 → 753**、
+    `部署卡.py` 387、`部署下载.py` 442 —— 六个模块全部 < 1000。
+    MI：`部署卡` / `部署下载` / `服务面板` 均 A，主文件与 `运行时` 为 C（拆分前主文件也是 C）。
+  - 依赖仍单向：主程序 → 部署卡 → 部署下载 → 运行时 →（ui_kit / 纯数据模块）。
+    `部署下载` 只从 `运行时` 借 `NO_WINDOW` / `human_size` / `workflows_dir` 三个基础件。
+- **体积口径统一到 10⁹（§9 第 3 项）**：`运行时.human_size` 原用 `n / 1024³` 却打印 `GB`，
+  与 AGENTS「1 GB = 10⁹ 字节」的约定相反，也与手册/HF 页面上的数字对不上。
+  现改为 KB/MB/GB 走 10³/10⁶/10⁹，小于 1 KB 显示 `B`（原来一律显示 `0 KB`）。
+  界面读数随之变大 7%：H3 扩散模型 **19.53 GB → 20.97 GB**、SeedVR2 3B **3.16 → 3.39**、
+  VAE **0.47 → 0.50**、双 VAE **2.62 + 0.56 → 2.81 + 0.61**、LoRA **1.82 → 1.96**、
+  FlashVSR 权重 **6.47 → 6.95**。`部署清单.py` 的 5 处 `desc` 同步改正（§9 只记了 1 处），
+  文件头补了口径说明防复发。
+- **代理按源分治（20 GB 整链实测暴露的真问题）**：`hf_pull` 原来把 `effective_proxy()` 的
+  Clash 代理套到**所有**源上，包括国内 CDN。实测同一文件 ModelScope 8 段直连 98.4 MB/s、
+  经代理 3.3 MB/s（差 30 倍），正是"20 GB 从来没跑完"的直接原因。
+  新增 `proxy_for(source)`：`ModelScope` 直连，`hf-mirror` / GitHub 才走探测到的代理；
+  `HF_PROXY=http://…` 仍对两个源都生效、`=none` 全部直连。`_probe_total` 也接受 `proxy`
+  参数（否则 hf-mirror 直连探测会十几秒读不到响应头，被误判成"文件不存在"）。
+  启动日志改为 `（自动探测：Clash http://127.0.0.1:7890；ModelScope 仍直连）`。
+
+### 验证
+- `py_compile` 九个模块全通过；`pylint --enable=E` 只剩**拆分前就有**的
+  `视频方案启动器.py:659 E0203`（`self.mm_prompt` 先读后定义，备份文件同样报，非本次引入）；
+  拆分过程中它抓出并修掉了 3 个 import 期看不见的真错误（`部署卡` 缺 `subprocess` /
+  `strip_ansi`，`部署下载` 缺 `workflows_dir`）。
+- `vulture --min-confidence 80` 零输出；`radon cc -a` 平均 **B（5.17）**，173 个块。
+- 界面冒烟（真建 Tk + 真建 App）：`_audit/smoke_ui.py` 9 项断言全过 —— App 继承到部署卡方法、
+  部署卡与主程序共用同一个 CONFIG、清单 16 项（就绪 15 / 16，缺 Video2X）、日志能进日志区、
+  `human_size(20970379616) == "20.97 GB"`；截图确认左栏「缺失与部署」显示 `就绪 15 / 16` +
+  `待处理：Video2X`，无重叠/裁切。
+- `verify_deploy.py` 16 项结构自检全 PASS。
+
+### 未闭环
+- **20 GB 级整链仍未跑完（§9 第 1 项）**：本次跑到 1.16 GB / 5% 时按用户要求停止。
+  已验证「探测总长 → 8 段并行 → 进度回调 → 旁路暂存（`.download`）」；未验
+  「8 段合并成 20 GB 单文件 → sha256 收尾 → 原子改名落位」（这三段在 2.62 GB 那次验过）。
+  实测环境：本机当前所在网络对 ModelScope 约 3.3 MB/s 上限（单连接 3.5、8 段合计 3.33、
+  经 Clash 3.5，且无 Clash TUN），全程约需 100 分钟。
+- Video2X 一键安装端到端、ffmpeg 首次安装整链仍未实测（§9 第 2 / 7 项）。
+- 代理探测的 UI 徽标（§9 第 5 项，可选）未做。
+- 本次未重新打包 exe（发版前需按 AGENTS 的 `TCL_LIBRARY` / `TK_LIBRARY` 姿势打包并冒烟）。
+
 ## v1.4.0 · 2026-10-27
 
 **新：把 `docs/交接-缺失下载部署.md` 剩下的 P1/P2 落地 —— 磁盘预检、ffmpeg 一键装、torch/CUDA 自检、代理自动探测、清单项内进度、GitHub 镜像回退。**
