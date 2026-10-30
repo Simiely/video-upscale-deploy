@@ -2,6 +2,37 @@
 
 本文件记录本项目的版本变更。格式：版本号 + 日期 + 变更分类。
 
+## v1.6.0 · 2026-10-30
+
+**工程收口：补测试、把发版收成一条命令、给部署清单加远端对账。用户可见行为不变。**
+
+### 新增
+- **`launcher/tests/`（46 个用例，纯标准库 unittest）**：日志文本（`human_size` 口径、
+  `progress_pct` 反例、`strip_ansi`、`log_level`/`tag_for`）、部署清单（`expect`/`sha256` 元组归一、
+  `hf_paths_of` 覆盖、`deploy_inventory` 三态、`proxy_for` 策略、`disk_check` 体积求和）、
+  工作流（格式识别、节点计数、换素材、按类名覆盖、读取容错）。
+  **不依赖 tkinter**：`python -m unittest discover -s tests` 在无 GUI 的解释器上 0.6 秒跑完。
+- **`launcher/发版.py`**：一条命令 = 前置检查（工作区干净 / HEAD 已推送 / `APP_VER` 匹配）→
+  打包（清残留进程、强制覆盖 `TCL_LIBRARY`、体积 >12 MB 且日志含 `pyi_rth__tkinter` 双判据）→
+  整包 zip → 建 tag ref → 建 Release → 传资产。支持 `--dry-run` / `--skip-build`。
+  发版说明直接从本文件对应版本段抓取，不手抄。
+- **`verify_deploy.py --real` / `--remote`**：前者按 `启动器配置.json` 盘点本机，
+  后者用 ModelScope 文件列表（一次请求拿到 Size+Sha256）与清单 `expect`/`sha256` 对账。
+
+### 修正
+- `verify_deploy.py` 的样例输出现在显式标注**【假环境】**：那段清单来自临时目录里的假
+  `comfy_dir`（用于状态机断言），以前长得跟真机盘点一模一样，容易被读成「本机缺 13 项」。
+- `部署清单.py` 新增可选字段 `hf_path`。「check 去掉 models/ 前缀 = 仓库内路径」这条推导
+  只对 H3 成立；SeedVR2 的权重在仓库**根目录**、本地却在 `models/SEEDVR2/` 下，
+  照推导做单文件下载会 404。这是 `--remote` 第一次跑就报「远端无此文件」暴露出来的。
+- `w_seedvr2_fp8` / `w_seedvr2_vae` 补 `hf_path` + `sha256`（ModelScope API 原值），
+  远端对账从此覆盖 7 个权重文件（当前 0 漂移）。动作优先级仍是「安装 > 恢复 > 下载」，界面行为不变。
+
+### 验证
+- 46 个用例全绿（python 3.13，无 tkinter）；`pylint --enable=E` 10.00/10；vulture 零输出。
+- `verify_deploy.py --real --remote`：本机 **15 / 16**（仅缺 Video2X）、7 个权重全部一致。
+- `发版.py --dry-run`：前置检查 → 打包 13.34 MB（tkinter 双判据通过）→ zip 13.44 MB，未触碰 GitHub。
+
 ## v1.5.0 · 2026-10-30
 
 **新：把交接清单 §9 的最后两项落地 —— 模块规模回到阈值内（拆分 `部署卡.py` / `部署下载.py`）、体积口径统一到 10⁹；顺带修掉"代理不分源"的下载隐患。**

@@ -76,6 +76,7 @@
 - **窗口尺寸**（v1.2.5）：1260×960 / `minsize` 1040×940，且 `min(设计值, 屏幕可用区)` 夹住 —— 高分屏下 `S()` 会放大（125% 时 `S(900)=1125`），不夹的话 1080p 屏上窗口底部（日志）会被顶到屏幕外。**改布局后必须重算每行需求高度**，否则下排会把上排挤到截断（按钮落折叠线下）。渲染验证要断言"控件底 ≤ 可视底"与"实际高 ≥ 请求高"。
 - **模块拆分按阈值**：单文件逻辑行超过 pylint 默认上限（**1000**）才拆。`ui_kit.py` 只放控件与设计令牌（含数据驱动的 `SettingsList` / `ask_text`）；`运行时.py` 只放与界面无关的运行时支撑（包括**日志行解析与清洗**：`strip_ansi` / `progress_pct` / `log_level` / `tag_for`，**日志落盘**：`LogFile` / `NoopLog`，**启动自检**：`STARTUP_PROBES` / `probe_path` / `startup_lines`，**设置项读写与打开**：`CONFIG_FIELDS` / `config_items` / `save_config` / `open_path`，**内置工作流清单**：`WORKFLOWS`），**两者都不 import 业务代码**（保持单向依赖：主程序 → 这两个模块）。分层要求：解析层只返回语义（级别名、标签名），**配色只由界面层的 `tag_config` 决定**；同理 `SettingsList` 不自己判路径对不对，`note` 由 `probe_path` 给出。✅ **v1.2.14 又拆过一次**：服务启停 / 批量任务 15 个方法搬 `服务面板.py`（App 的 mixin，主文件 **899 / 1000，余量 101**；mixin 的 no-member 误报在类级豁免并写明原因）。✅ v1.2.11 拆过：`_render_wf_detail` 整块（~70 行）搬 `ui_kit.WorkflowDetail`。✅ v1.2.12：`Dropdown` 弹出化 + `_watch_expand` 退役。✅ **v1.5.0 又拆过一次（这次是清算欠账）**：主文件 1227 → **856**、`运行时.py` 1188 → **753**，新增 `部署卡.py`（387，界面 mixin）与 `部署下载.py`（442，联网与部署）。切法是**按注释横幅/函数标记**定位再整块搬家，切完必须补跑 `pylint --enable=E` —— import 期看不见的缺符号（`subprocess` / `strip_ansi` / `workflows_dir`）只有 pylint 会当场报出来，这次就抓出 3 个。**余量再回到 30 行以下时，先拆再加。**
 - **打包前先清进程 + 包后核对时间戳/体积**（v1.2.4 教训）：运行中的 exe 会锁住 `dist`，`--clean` 删不掉旧产物 → 构建中止却"看起来成功"。
+- **纯函数改动先加用例**：`launcher/tests/` 里已有的三块（日志文本 / 部署清单 / 工作流图）全部不依赖 tkinter，跑一次 0.6 秒。改了 `human_size`、`progress_pct`、`deploy_inventory`、`hf_paths_of`、`apply_*` 这些「输入输出能穷举」的函数，先补一条用例再改实现 —— 2026-10-30 之前这批东西零测试，口径错了 5 处、缺符号 3 处全靠人眼撞见。
 - 视觉改动必须**对齐设计稿**：蓝本见分支 `ui-redesign` 的 `redesign/video_launcher_sidebar.html`；改完跑截图验证（`radon`/像素亮度），别只靠"看着像"。
 - 路径不写死：新增路径一律先进 `CONFIG` 字典，并允许 `启动器配置.json` 覆盖。
 - 打包产物（`build/`、`dist/`）不入库，发行走 Releases。
@@ -85,6 +86,7 @@
 ```bash
 cd <部署根>/launcher                                             # 例如 C:\AI\video-upscale-deploy\launcher
 python 视频方案启动器.py                                          # 直接运行（自动认出部署根，无需配置）
+python -m unittest discover -s tests                              # 46 个纯函数用例（无 tkinter，0.6s）
 git ls-files --eol | grep "i/crlf"                           # 应为空：仓库内存 LF，规则见根 .gitattributes（2026-10-30 加）
 taskkill /F /IM ComfyUI启动器.exe                                 # 打包前清残留（会锁 dist）
 export TCL_LIBRARY='C:\Users\2504\AppData\Local\Python\pythoncore-3.14-64\tcl\tcl8.6'   # 必设，否则打出无 tkinter 的坏 exe
