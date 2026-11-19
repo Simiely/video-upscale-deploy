@@ -30,5 +30,9 @@ jobs:
         run: python -m pip install "PyYAML>=6.0" "markdown-it-py>=3.0" "jsonschema>=4.20"
       - name: Invariants
         run: python tools/repo-kit/check_repo.py --root .
+      - name: Text rules
+        # BOM / 行尾铁律。此前只在 AGENTS.md「常用命令」里，没人跑，红了半年没发现。
+        # kit 托管文件由 schema/kit.lock.json 豁免（它们归上游，改了就 KIT LOCK 红）。
+        run: python tools/check_text.py
       - name: Kit lock
         run: pwsh tools/update-repo-kit.ps1 -Check

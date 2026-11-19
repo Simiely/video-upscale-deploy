@@ -11,9 +11,11 @@
 
 退出码 0 = 全部通过；1 = 有违规（CI 会红）。
 """
+import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 BOM = b"\xef\xbb\xbf"
 
@@ -26,14 +28,31 @@ def tracked_files(pattern=None):
     return [p.decode("utf-8") for p in out.split(b"\0") if p]
 
 
+def kit_managed():
+    """kit 托管文件由 schema/kit.lock.json 按字节哈希锁定，本仓无权改其编码。
+
+    BOM 会让 sha256 变（哈希按原始字节算、只归一化 CRLF），改了就 `KIT LOCK: FAIL`。
+    这些文件的编码归上游 repo-kit 管，这里只校验本仓自己写的脚本。
+    名单从 lock 读，不手维护 glob——否则等于在 lock 之外再造一份会漂移的清单。
+    """
+    lock = Path("schema/kit.lock.json")
+    if not lock.exists():
+        return set()
+    return set(json.loads(lock.read_text(encoding="utf-8-sig")).get("files", {}))
+
+
 def check_bom():
     bad = []
-    files = tracked_files("*.ps1")
+    skip = kit_managed()
+    tracked = tracked_files("*.ps1")
+    files = [p for p in tracked if p not in skip]
+    skipped = len(tracked) - len(files)
     for p in files:
         with open(p, "rb") as fh:
             if fh.read(3) != BOM:
                 bad.append(p)
-    print("BOM 检查：%d 个 .ps1，违规 %d 个" % (len(files), len(bad)))
+    print("BOM 检查：%d 个 .ps1（跳过 %d 个 kit 托管），违规 %d 个"
+          % (len(files), skipped, len(bad)))
     for p in bad:
         print("  [缺 BOM] %s" % p)
     return not bad
