@@ -276,7 +276,7 @@ pyinstaller VideoLauncher.spec
 
 - [`video-upscale-deploy`](https://github.com/Simiely/video-upscale-deploy) —— 部署包 + 本启动器。它调用的 `02-FlashVSR/批量放大.ps1`、`03-SeedVR2/批量放大.ps1` 就在**同一个仓库的根目录**里
 - [`video-launcher`](https://github.com/Simiely/video-launcher) —— 合并前的旧仓库，已归档只读，历史上限至 v1.2.18
-- [`minimax-h3-local-deploy`](https://github.com/Simiely/minimax-h3-local-deploy) —— MiniMax H3 本地部署说明
+- MiniMax H3 本地部署说明已并入本仓库 [`docs/MiniMax-H3-使用指南.md`](../docs/MiniMax-H3-使用指南.md)（原独立仓 `minimax-h3-local-deploy` 已归档只读）
 - 索引：[`design-tools`](https://github.com/Simiely/design-tools)
 
 ## 文档

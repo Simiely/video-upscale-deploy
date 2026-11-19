@@ -42,6 +42,8 @@ powershell -ExecutionPolicy Bypass -File .\00-ComfyUI底座\启动ComfyUI.ps1
 | [SeedVR2/SeedVR2-放大1080p-画质修复.json](SeedVR2/SeedVR2-放大1080p-画质修复.json) | `max_resolution` 1920 + overlap 1 + `enable_debug` 开 + TorchCompile 节点 | 低画质源修复向 |
 | [SeedVR2/SeedVR2-放大2160p-4K极致.json](SeedVR2/SeedVR2-放大2160p-4K极致.json) | 短边 **2160（4K）**，其余同标准档 | 冲 4K；显存占用高、最慢 |
 | [SeedVR2/SeedVR2-放大HD-官方示例.json](SeedVR2/SeedVR2-放大HD-官方示例.json) | 插件官方示例（3B **FP16** / bts 32 / 官方 7 节点写法）| 参考 / 基线 |
+> 另有 [`SeedVR2-画布原件/`](SeedVR2-画布原件/) 收了 2 份从 `seedvr2-local-deploy` 并入的 **UI 格式工作流**（`seedvr2_upscale_1080p.json` / `seedvr2_fast_res1024_batch9.json`），是 ComfyUI 节点导出的画布原件，与上表档位一一对应。**日常推送执行用 API 图；只有需要往画布里拖现成节点图时用原件**——原件不手写维护 `widgets_values`。
+
 
 ### MiniMax H3 · 生成型（不是放大，是「造」视频）
 

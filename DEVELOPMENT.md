@@ -234,6 +234,56 @@ Enhancer 的下载、安装、启动，不碰 ComfyUI 节点与模型目录。�
 
 ---
 
+### 问题：VAE 编码极慢（单 batch 约 8 分钟）
+
+**TL;DR**：VAE 被 `offload_device=cpu` 丢到 CPU 上算，12GB 卡叠加 1024×1024 分块后灾难性降速。（源自 `seedvr2-local-deploy`，2026-11-19 并入）
+
+- 现象：日志 `Encoding batch N/29` 每次间隔 5~8 分钟，UI 进度条停在 0%。
+- 根因：`SeedVR2LoadVAEModel` 的 offload device 设成了 CPU。
+- 解决：VAE 的 `offload_device` 改 `cuda:0`，让编码上 GPU。
+- 预防：慢时看任务管理器——GPU 占用低且 CPU 占用高 = offload 设错了。
+
+### 问题：大 batch_size 反而更慢 / 爆显存
+
+**TL;DR**：SeedVR2 的消耗主力是 **VAE 解码分块**，不是模型大小或分辨率；小 batch 才高效。（源自 `seedvr2-local-deploy`）
+
+- 现象：845 帧、batch 33 时全程预计达数小时量级。
+- 根因：参考 `ai-upscaler-benchmark`（2026-06）实测：1080p 下 batch=9 已约 0.11 fps，更大/更高分辨率直接 OOM。[benchmark](https://github.com/ismael-joffroy-chandoutis/ai-upscaler-benchmark/blob/main/docs/video-upscalers.md)
+- 解决：`batch_size` 降到 9（或 5）；保留 VAE tiling + `blocks_to_swap`。
+- 预防：长视频优先小 batch + tiling，别贪大 batch。
+
+### 问题：`resolution` 参数填 `"fixed"` 不生效
+
+**TL;DR**：该字段要整数；填字符串会走默认值、控件显示异常。（源自 `seedvr2-local-deploy`）
+
+- 现象：节点分辨率控件为字符串值，输出分辨率不符合预期。
+- 解决：显式填整数 `1080`（或快档 `1024`）。
+- 预防：改完工作流拖进画布重载，看节点实际显示的值确认。
+
+### 问题：每次跑都像第一次一样慢
+
+**TL;DR**：`cache_model=false` 时每次任务结束就卸载模型，下一次重新加载 + 冷启动。（源自 `seedvr2-local-deploy`）
+
+- 现象：换第二个视频又开始漫长的加载阶段。
+- 解决：Loader 节点 `cache_model` 开 `true`，模型常驻，后续任务直接复用。
+- 注意：会持续占用显存（3B FP8 约 3GB）；连续修多段时开，单次任务可不开。
+
+### 问题：git / curl 不走系统代理，GitHub 直连被重置
+
+**TL;DR**：本机代理是 `127.0.0.1:7890`，但 `git`/`curl` 默认不读系统代理，git 协议连 GitHub 偶尔直接失败。（源自 `seedvr2-local-deploy`）
+
+- 现象：`git clone` 卡住 / 被 reset；权重下载失败。
+- 解决：`git`/`curl` 显式 `-x http://127.0.0.1:7890`；克隆节点改用 zip 包而非 git 协议。
+- 预防：下载节点 / 权重前先确认代理链路能通。
+
+### 性能基准参考（4070S 12GB）
+
+- **外部基准**：`ai-upscaler-benchmark`（2026-06，测于 RTX 5090）——SeedVR2 1080p batch 9 ≈ **0.11 fps**；VAE 解码分块主导消耗，效率路径 = 小 batch + VAE tiling + blockswap。[benchmark](https://github.com/ismael-joffroy-chandoutis/ai-upscaler-benchmark/blob/main/docs/video-upscalers.md)
+- **4070S 现实预期**：845 帧、1080p 档全程约 **30~60 分钟**是合理水平（非故障）；想更快 → `resolution=1024` + `batch=9`。
+- **判断是否卡死**：看日志 `Encoding batch N/29` 的 N 是否递增、任务管理器 GPU 利用率是否高；递增且 GPU 忙 = 在跑。
+
+---
+
 ## 四、后续可做
 
 - 给三套批量脚本补自动化回归测试（至少覆盖参数校验分支）

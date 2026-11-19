@@ -191,6 +191,12 @@ video-upscale-deploy/
 | [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md) | 使用者 | 方案四：VEHelper 用法、下载/续传链路、模型限制、打包与测试 |
 | [workflows/README.md](workflows/README.md) | 使用者 | 图形界面工作流：拖入即用、两个 FlashVSR 版本的区别、参数速查、实测性能 |
 | [docs/使用指南.md](docs/使用指南.md) | 命令行用户 | 执行顺序、每个步骤的作用、全部参数说明、显卡分配、图形界面连线表、常见问题、修订记录（图形启动器见 [launcher/README.md](launcher/README.md)） |
+| [docs/MiniMax-H3-使用指南.md](docs/MiniMax-H3-使用指南.md) | H3 使用者 | 三路线对比 / 决策树 / 下载清单 / 参数 / 排错（原 `minimax-h3-local-deploy`） |
+| [docs/MiniMax-H3-实测-路线B-4070TiSuper16G.md](docs/MiniMax-H3-实测-路线B-4070TiSuper16G.md) | H3 使用者 | 16G 单机实测：3 分 13 秒/条 + 显存/内存峰值 + 无头运行 |
+| [docs/MiniMax-H3-DEVELOPMENT.md](docs/MiniMax-H3-DEVELOPMENT.md) | H3 开发者 | 8 条 H3 专属坑（加载被杀、int8 慢 3 倍、NVFP4 选型、GGUF 等） |
+| [docs/MiniMax-H3-参考/](docs/MiniMax-H3-参考/) | H3 使用者 | 选型视频要点 / 逐字稿 / 风险说明（4 份） |
+| [workflows/SeedVR2-画布原件/](workflows/SeedVR2-画布原件/) | 图形界面用户 | 2 份 UI 格式画布原件（原 `seedvr2-local-deploy`），日常执行仍用 API 图 |
+| `docs/SeedVR2-AGENTS-历史快照.md` · `docs/MiniMax-H3-AGENTS-历史快照.md` | 追溯 | 两个已归档子仓的 AGENTS 原样快照（当时精确版本 / 约定 / 基线） |
 | [AGENTS.md](AGENTS.md) | AI / 未来的你 | 技术栈精确版本、关键坑、约定、常用命令 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 开发者 | 项目概览、架构说明、关键问题与方案 |
 | [CHANGELOG.md](CHANGELOG.md) | 所有人 | 版本变更记录 |
