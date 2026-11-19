@@ -10,6 +10,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 注意：不要把本 workflow 设为分支保护的 required check。
+# GitHub 对因 paths 过滤而跳过的运行会让检查停留在 Pending，
+# 只改代码的 PR 会因此永远无法合并（官方文档 "checks ... will remain in a Pending state"）。
+
 permissions:
   contents: read
 

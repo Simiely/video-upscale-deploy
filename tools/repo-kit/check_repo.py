@@ -47,8 +47,8 @@ LINK_SCHEMES = ("http://", "https://", "mailto:", "tel:", "javascript:", "data:"
 ADR_RE = re.compile(r"ADR-(\d{4})-[a-z0-9-]+\.md$")
 ID_RE = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+$")
 PITFALL_FIELDS = ("summary", "symptom", "cause", "detect", "avoid", "recover", "applies_to", "severity")
-KIT_VERSION = "2.8.0"
-SPEC_VERSION = "2.1.3"
+KIT_VERSION = "2.9.0"
+SPEC_VERSION = "2.1.4"
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +405,26 @@ def is_generated(rel: str, generated: set[str]) -> bool:
 
 
 GENERATED_MARKER = "生成文件，勿手改"
+AGENTS_MAX_LINES = 150  # 规范 2.1.4 的「门面」阈值，见 单项目规范 §二/§七
+
+
+def agents_length_problem(root: Path) -> tuple[int, str] | None:
+    """AGENTS.md 超过 150 行时返回 (行数, 修法提示)，否则 None。
+
+    计数口径是**文件总行数**（等价 `wc -l`），与规范正文一致——不是非空行，
+    也不是词数（2.1.4 之前的「150 词」实测 97 个仓里 96 个超标，等于死条文）。
+    """
+    path = root / "AGENTS.md"
+    if not path.exists():
+        return None
+    total = len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+    if total <= AGENTS_MAX_LINES:
+        return None
+    if (root / "schema/agents.template.md").exists():
+        hint = "它是生成物：把细节搬进 rules/*.md，再改 schema/agents.template.md 后重跑 generate.py --write"
+    else:
+        hint = "把细节搬进 rules/*.md，主文件只留门面 + @引用"
+    return total, hint
 
 
 def agents_conflict(root: Path, generated: set[str]) -> bool:
@@ -507,8 +527,10 @@ def check_spec(root: Path, report: Report) -> None:
 
     - 无 kit.lock：视为未接入机器层（v1），不报错
     - 有 kit.lock 但缺字段：WARN，提示重跑安装器
-    - 格式非法 / 高于校验器支持：ERROR
+    - 格式非法 / 主次版本高于校验器支持：ERROR
     - 主版本落后：ERROR（需要迁移）；次版本落后：WARN
+    - 补丁版本差异（任一方向）：不报。补丁只做措辞澄清，不构成不兼容；
+      按主次版本比较后，发一个 PATCH 版规范不会让已接入仓库集体报红。
     """
     lock_path = root / "schema" / "kit.lock.json"
     if not lock_path.exists():
@@ -531,17 +553,18 @@ def check_spec(root: Path, report: Report) -> None:
         return
     repo_ver = tuple(int(x) for x in match.groups())
     cur_ver = tuple(int(x) for x in SPEC_VERSION.split("."))
-    if repo_ver > cur_ver:
+    repo_mm, cur_mm = repo_ver[:2], cur_ver[:2]
+    if repo_mm > cur_mm:
         report.add(
             "SPEC_NEWER", "ERROR", "schema/kit.lock.json",
-            f"仓库规范 {raw} 高于校验器支持的 {SPEC_VERSION}，请升级 repo-kit",
+            f"仓库规范 {raw} 高于校验器支持的 {SPEC_VERSION}（按主次版本比较），请升级 repo-kit",
         )
-    elif repo_ver[0] < cur_ver[0]:
+    elif repo_mm[0] < cur_mm[0]:
         report.add(
             "SPEC_OUTDATED", "ERROR", "schema/kit.lock.json",
             f"仓库规范 {raw} 落后主版本 {SPEC_VERSION}，需要按迁移文档升级",
         )
-    elif repo_ver[1] < cur_ver[1]:
+    elif repo_mm[1] < cur_mm[1]:
         report.add(
             "SPEC_OUTDATED", "WARN", "schema/kit.lock.json",
             f"仓库规范 {raw} 落后次版本 {SPEC_VERSION}",
@@ -1145,6 +1168,15 @@ def main() -> int:
             lines = [ln for ln in p.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
             if len(lines) > 5 or "AGENTS.md" not in "\n".join(lines):
                 report.add("ENTRY_DUP", "ERROR", name, "只允许一行指向 AGENTS.md 的指针，禁止第二份完整规则")
+
+    # 门面阈值：AGENTS.md 超过 150 行说明细节没搬走（规范 2.1.4）
+    problem = agents_length_problem(root)
+    if problem is not None:
+        total, hint = problem
+        report.add(
+            "AGENTS_TOO_LONG", "ERROR", "AGENTS.md",
+            f"{total} 行 > {AGENTS_MAX_LINES} 行（规范 2.1.4 的门面阈值）。{hint}",
+        )
 
     # 生成产物存在性（内容是否最新由 generate.py --check 负责）
     if agents_conflict(root, generated):
