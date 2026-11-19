@@ -1,6 +1,6 @@
 # AGENTS.md · 项目规则
 
-> 📌 **文档基线**：2026-11-19（commit `f4d8e2e`）升级 repo-kit 2.9.0 / 规范 2.1.4
+> 📌 **文档基线**：2026-11-19（commit `9524df0`）拆 README/DEVELOPMENT 为门面 + 子页（kit 2.9.0 / 规范 2.1.4）
 > **更新文档/代码后，请更新此行**（日期 + 新 commit hash），并在 CHANGELOG 追加版本
 
 只写代码里看不出的信息。细节见 [DEVELOPMENT.md](DEVELOPMENT.md) 与 [docs/使用指南.md](docs/使用指南.md)。
