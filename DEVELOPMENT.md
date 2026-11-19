@@ -1,6 +1,6 @@
-# DEVELOPMENT.md · 架构与问题记录
+# DEVELOPMENT.md · 项目概览与索引
 
-结构固定三块：**项目概览 → 架构说明 → 关键问题与方案**。
+结构固定三块：**项目概览 → 架构说明（[子页](docs/架构.md)）→ 关键问题与方案（索引表 + 一坑一篇）**。
 关键问题一坑一篇，格式与 knowledge-base 完全一致，项目收尾时可直接提炼过去。
 
 ---
@@ -22,265 +22,36 @@
 ---
 
 ## 二、架构说明
-
-### 目录与职责
-
-```
-common.ps1              # 唯一的配置源 + 工具函数库（不含业务逻辑）
-检查环境.ps1             # 只读体检，不产生任何副作用
-00-ComfyUI底座/          # 方案二、三共用的运行环境
-01-Video2X/ 02-FlashVSR/ 03-SeedVR2/
-                        # 每个方案固定两个脚本：安装X.ps1 / 批量放大.ps1
-```
-
-分层规则：**`common.ps1` 只放"配置 + 通用能力"，各方案目录只放"这个方案特有的事"**。
-新增方案时不需要动 `common.ps1`，除非要加新的通用能力。
-
-### common.ps1 提供的能力
-
-| 函数 | 作用 |
-|---|---|
-| `New-ProjectDirs` / `Get-VideoFiles` | 目录初始化、按扩展名收集待处理视频 |
-| `Show-Gpu` / `Test-Cmd` / `Get-BasePython` | 环境探测（显卡、外部命令、Python 解释器） |
-| `Assert-ComfyReady` | 前置断言：底座没装就报错并给出补救命令 |
-| `Install-ComfyNode` | 克隆自定义节点 + 装其 `requirements.txt`（已存在则只补依赖） |
-| `Invoke-HfDownload` | 走镜像拉权重，**基于 curl.exe**（不用 `huggingface_hub`），支持断点续传、按远端字节数校验完整性 |
-| `Resolve-FfmpegTool` / `Enable-FfmpegOnPath` | 按能力探测可用的完整版 ffmpeg，并把它注入子进程 PATH |
-| `Restore-AudioTrack` / `Test-HasAudio` | 用 ffmpeg 流拷贝把源音轨接回放大后的输出（SeedVR2 专用） |
-| `Assert-ModelFiles` | 校验关键权重文件是否齐全，缺哪个列哪个 |
-| `Test-ComfyApi` / `Wait-ComfyApi` / `Invoke-ComfyPrompt` | 方案二的批量通道：把 API 格式工作流提交给 ComfyUI 并等结果 |
-
-### 两条批量通道
-
-三套方案里，方案一和方案三走命令行，方案二只能走 HTTP API —— 这是由各自项目形态决定的：
-
-```
-方案一 Video2X   批量放大.ps1 → video2x.exe（循环调用，逐文件）
-方案二 FlashVSR  批量放大.ps1 → HTTP POST /prompt → 轮询 /history/{id}
-方案三 SeedVR2   批量放大.ps1 → inference_cli.py（节点自带，天生为批量设计）
-```
-
-方案二之所以走 API：FlashVSR 是 ComfyUI 节点，没有独立 CLI；API 格式工作流
-（`{"节点ID": {"class_type": ..., "inputs": {...}}}`）比在网页上点按钮更适合循环几百个视频。
-
-### 关键设计决策
-
-1. **路径集中**：`common.ps1` 顶部两个变量派生全部路径，用户只改这两处
-2. **档位映射集中**：`批量放大.ps1` 里用 `switch ($Profile)` 一张表决定模型精度、批大小、BlockSwap 层数
-3. **模型下载按仓库分组**：`$want` 哈希表以仓库名为键，避免把 AInVFX 的文件名拿到 numz 去下
-4. **产物识别按时间戳**：不比对文件名集合，避免同名覆盖时误判"没找到输出"
-5. **镜像可切**：`HF_ENDPOINT` 环境变量优先，默认 `hf-mirror.com`
-
-### 方案四 VEHelper（非 ComfyUI）
-
-`04-VisualEnhancer/` 与前三个方案没有代码复用：它管的是外部桌面程序 Merserk Visual
-Enhancer 的下载、安装、启动，不碰 ComfyUI 节点与模型目录。为了不让它长成第二个
-`视频方案启动器.py`，按「纯逻辑 / 外壳」拆开：
-
-| 模块 | 职责 | 是否可单测 |
-|---|---|---|
-| `downloader.py` | 分段计划、续传校验、合并；curl 并行只是外壳 | 计划/合并/统计是纯函数，可测 |
-| `release.py` | atom 取 tag、资产页取 zip 名、代理探测 | 解析函数可测 |
-| `installer.py` | 解压、定位 `Visual Enhancer.exe` | 可测（造 zip/临时目录） |
-| `ui.py` | 色板、深色标题栏、按钮、消息框、目录选择器 | 不测，纯界面 |
-| `app.py` | 主窗口 + 控制器，只做事件编排 | 不测，靠冒烟 |
-| `config.py` / `errors.py` | 配置读写 / 异常类型 | 可测 |
-
-线程模型固定为「UI 主线程 + 后台 daemon 线程 + queue 回主线程」：版本查询与下载都在
-后台跑，`_drain()` 在主线程 `after()` 轮询消费事件。界面里不出现 GPU、磁盘、代理端口
-等信息——这些探测要么对主流程没用，要么只在下载内部兜底，展示出来只会增加噪音。
-
-下载用 `.parts/plan.json` 记录 tag / 资产名 / 总字节数，三者与当前版本不一致就整体重置，
-避免跨版本拼接。取消时终止所有 curl 子进程，不是只丢一个标志位。
-
----
+组件职责、`common.ps1` 提供的能力、两条批量通道（脚本 CLI / ComfyUI API）、关键设计决策、
+方案四 VEHelper 的分工与线程模型，以及 4070S 12GB 的性能基准，全部在 [docs/架构.md](docs/架构.md)。
 
 ## 三、关键问题与方案
 
-### 问题：PowerShell 5.1 把中文脚本读成乱码
+一坑一篇，全文在 [`docs/问题记录/`](docs/问题记录/)，索引页见 [docs/问题记录/index.md](docs/问题记录/index.md)；
+本表只留标题与 TL;DR，方便扫。
 
-**TL;DR**：`.ps1` 存成 UTF-8 **without** BOM，PowerShell 5.1 按 ANSI 解码，中文变乱码并直接解析失败。
-
-- 问题：含中文注释/字符串的脚本执行时报语法错误，报错位置和实际错误位置对不上
-- 根因：PowerShell 5.1 判断文件编码时不看内容只看 BOM；无 BOM 就退回系统 ANSI 代码页
-- 解决：把文件另存为 **UTF-8 with BOM**（写入时先写 `EF BB BF` 三字节）
-- 预防：改完 `.ps1` 跑一次 BOM 检查（命令见 [AGENTS.md](AGENTS.md)「常用命令」）
-
-### 问题：安装脚本与批量脚本的档位名对不上
-
-**TL;DR**：安装用 `-Profile 3b-fp8`、批量用 `-Profile 12g`，按手册装完就跑不起来。
-
-- 问题：两套命名各自演进，用户按安装脚本的档位名去跑批量脚本，参数校验直接拒绝
-- 根因：档位是"按显卡"还是"按模型精度"命名，早期没定死
-- 解决：统一为按显存命名 `12g / 16g / 24g`（批量脚本额外有 `custom` 供手动指定模型）
-- 预防：改档位名时同步四处——两个 SeedVR2 脚本、`检查环境.ps1`、`docs/使用指南.md`
-
-### 问题：SeedVR2 的 7B FP8 权重下不到
-
-**TL;DR**：`seedvr2_ema_7b_fp8_e4m3fn.safetensors` 不在节点注册表里；注册表内的 7B FP8 是 `_mixed_block35_fp16` 变体，且只在 `AInVFX` 仓库。
-
-- 问题：按直觉写的文件名，在 ComfyUI 的 `--dit_model` 下拉框里根本选不到
-- 根因：`--dit_model` 的候选项 = 节点 `src/utils/model_registry.py` 的 `MODEL_REGISTRY` ∪ 磁盘已有文件。名字必须与注册表一致，且不同变体散落在两个 HF 仓库
-- 解决：脚本改按注册表内的 `seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors` 下载，并把它归到 `AInVFX/SeedVR2_comfyUI`
-- 预防：**改权重文件名前先读 `model_registry.py`**，不要凭文件名推断
-
-### 问题：上游 README 写了 CLI 参数，代码里却没有
-
-**TL;DR**：`--allow_vram_overflow` 出现在 SeedVR2 仓库 README 的「Performance Optimization」一节，但 v2.5.24 的 `inference_cli.py` 没实现它，传了直接报错退出。
-
-- 问题：照 README 给批量脚本加了 `--allow_vram_overflow`，SeedVR2 启动即以 `unrecognized arguments` 退出
-- 根因：上游文档比代码超前。入口用的是 `parser.parse_args()` 且 `allow_abbrev=False`，未知参数不会静默忽略
-- 解决：从批量脚本移除该参数
-- 预防：**以代码为准，不以文档为准**。改 SeedVR2 参数前先跑 `inference_cli.py --help`（命令见 [AGENTS.md](AGENTS.md)）
-
-### 问题：给 NVENC 编码器传 crf 被静默忽略
-
-**TL;DR**：VideoHelperSuite 的 `nvenc_*` 格式定义里没有 `crf`，用的是 `bitrate` + `megabit`。
-
-- 问题：用显卡编码器出片时设了 `crf`，输出体积和画质完全不受控，也不报错
-- 根因：不同编码格式的输入项不同——`h264/h265-mp4` 用 `crf`，`nvenc_*` 用 `bitrate`（配合 `megabit` 布尔位表示 Mbps）
-- 解决：批量脚本按格式分派——`-Format` 含 `nvenc` 时填 `bitrate` + `megabit`，否则填 `crf`
-- 预防：新增编码格式前先看 `video_formats/<格式>.json` 里的字段定义
-
-### 问题：Video2X 的模型名与缩放倍数不是任意组合
-
-**TL;DR**：合法模型只有 3+3+14 个；且 `models-pro` 没有 4 倍、`models-nose` 只有 2 倍、`realesrgan-plus` 只有 4 倍。
-
-- 问题：示例里用了 `realesr-generalv3` 这个不存在的模型；也默认了"任何模型都能 2/3/4 倍"
-- 根因：模型白名单在源码 `validators.cpp` 里，倍数支持范围取决于模型目录里实际有哪些权重文件
-- 解决：批量脚本内置三张白名单，并按模型校验 `-Scale` 是否合法，非法值在最前面就报错
-- 预防：加新模型前先查 `validators.cpp` 与上游模型目录树，别照文档站（部分页面是旧版写法）
-
-### 问题：Video2X 列设备用了旧版参数名
-
-**TL;DR**：6.4.0 用 `--list-devices` / `-l` 列设备、`--device` / `-d` 选设备；`--list-gpus` 是旧版写法。
-
-- 问题：安装脚本用 `--list-gpus` 做自检兜底，在 6.4.0 上报未知参数
-- 根因：文档站部分页面停留在旧版命令行
-- 解决：改用 `--list-devices`，并把该事实写进脚本注释
-- 预防：**命令行参数以 tag 对应的 `argparse.cpp` 为准**
-
-### 问题：FlashVSR 缺少 posi_prompt.pth 导致节点导入失败
-
-**TL;DR**：这个文件不在 HuggingFace 权重里，而是随节点仓库提交，由 `nodes.py` 从节点目录自身加载。
-
-- 问题：只下了 HF 权重，节点导入时报找不到 `posi_prompt.pth`
-- 根因：权重与"节点自带的提示文件"分属两个来源；用不完整的 zip 包安装会漏掉它
-- 解决：安装脚本显式校验该文件存在，缺失时报错并提示重新完整 clone 节点仓库
-- 预防：装节点后先确认节点目录里该有的文件都在，再下权重
-
-### 问题：用 import_module 做节点冒烟测试永远失败
-
-**TL;DR**：`custom_nodes` 下的目录名带连字符且不是 Python 包，`importlib.import_module("custom_nodes.ComfyUI-FlashVSR_Ultra_Fast")` 必然失败，会误导成"安装失败"。
-
-- 问题：安装脚本的冒烟测试报导入错误，但节点其实是好的
-- 根因：测试方法本身不成立——目录名不是合法标识符
-- 解决：改用 ComfyUI 自带的 `main.py --quick-test-for-ci`，它会真实加载全部自定义节点后退出
-- 预防：验证"节点能否被 ComfyUI 加载"要用 ComfyUI 自己的加载器，不要绕过去手工 import
-
-### 问题：靠文件名集合判断批量产物会误判
-
-**TL;DR**：同名文件被覆盖时，新旧文件名集合完全一样，脚本会误判成"没有生成输出"。
-
-- 问题：重跑同一批素材，脚本报"没找到输出文件"，但产物其实已经生成
-- 根因：产物识别用的是"输出目录文件名集合的差集"，覆盖场景下差集为空
-- 解决：改为按"文件修改时间晚于本次启动时刻"识别
-- 预防：识别产物优先用时间戳或显式输出路径，不要用集合差集
-
-### 问题：体积口径混用 GiB 与 GB
-
-**TL;DR**：同一份手册里两套口径（1 GiB = 2³⁰ vs 1 GB = 10⁹）却都标成"HuggingFace 实际文件大小"，同一文件出现两个数。
-
-- 问题：用户按手册核对自己磁盘上的文件大小，对不上，怀疑下载不完整
-- 根因：HuggingFace 页面按 1 GB = 10⁹ 显示，Windows 资源管理器按 1 GiB = 2³⁰ 显示，两者相差约 7%
-- 解决：全部统一为 1 GB = 10⁹ 字节，并在文档里显式注明与 Windows 显示值的差异
-- 预防：写体积时标明口径；跨来源数据先统一单位再入表
-
-### 问题：同一事实在三个文件里写了三个版本
-
-**TL;DR**：`检查环境.ps1` 给 16G 卡的方案三建议是"3B FP8 无 BlockSwap"，而手册和批量脚本的 `-Profile 16g` 是"3B FP16 + BlockSwap 16"。
-
-- 问题：用户先跑体检脚本拿到建议，再照手册装，两处说的不是一回事
-- 根因：建议文案是手写的，没有单一事实源
-- 解决：统一为 `-Profile 16g`（3B FP16 + BlockSwap 16）；24G 同步为 `-Profile 24g`
-- 预防：**凡是有"档位/默认值"的地方，都从同一张表派生**；改一处必须 grep 全仓库同名概念
-
-### 问题：SeedVR2 的 ffmpeg 编码后端崩在精简构建上
-
-**TL;DR**：`inference_cli.py` 里写死了裸命令 `ffmpeg`（`shutil.which` 校验 + `subprocess.Popen(['ffmpeg', ...])` 编码），**只认 PATH**。PATH 上第一个往往是精简构建（`--disable-everything`，无 rawvideo、无 libx265），一跑就 `Unknown input format: 'rawvideo'` 崩溃；若换 opencv 后端则写成 MPEG-4 Part 2。
-
-- 问题：批量脚本已探测出完整版 ffmpeg 路径，但 CLI 依然崩——因为"探测到"和"子进程能用上"是两件事
-- 根因：CLI 不读任何"ffmpeg 路径"参数，只用 PATH 查找；本机实测 PATH 首个是 TRAE 自带的精简构建
-- 解决：`Enable-FfmpegOnPath` 把完整版所在目录插到当前进程 PATH 最前面（只影响本进程及子进程），批量脚本启动时调用
-- 预防：**涉及外部命令的探测，必须确认"子进程也拿得到"**。另外判断 ffmpeg 可用性不能只看 PATH 上有没有，要按能力探测（`-demuxers` 找 rawvideo、`-encoders` 找 libx265）
-
-### 问题：SeedVR2 输出没有音轨
-
-**TL;DR**：SeedVR2 的 CLI **完全不处理音频**，`add_argument` 全表里没有任何音频项，输出天然只有视频流。手册一度写成"CLI 会自动保留"，是错的。
-
-- 问题：720p 带 AAC 的素材放大后音轨整条丢失
-- 根因：该 CLI 定位是"视频画面修复"，音频不在其职责内，也不提供任何透传开关
-- 解决：`Restore-AudioTrack` 在收尾时用 ffmpeg 把源音轨流拷贝过去（`-map 0:v:0 -map 1:a:0 -c:v copy -c:a copy`），单文件与目录两种模式都覆盖
-- 预防：**别假设"放大工具会保留音轨"**，跑完用 ffprobe 核对输出流里有没有音频轨
-
-### 问题：只看"跑完了"会漏掉静默降级
-
-**TL;DR**：SeedVR2 的 ffmpeg 后端不可用时会**静默退回 opencv**，输出是 MPEG-4 Part 2（`codec_name=mpeg4`），体积比 H.264 大得多，但脚本退出码是 0、日志也报"completed successfully"。
-
-- 问题：一次"跑通"的输出，事后 ffprobe 才发现是 `mpeg4` 而非 `h264`，说明 ffmpeg 后端从未真正生效
-- 根因：`save_frames_to_video` 在 `video_backend == "ffmpeg"` 分支之外直接走 `cv2.VideoWriter_fourcc(*'mp4v')`，没有失败回退提示
-- 解决：批量脚本改为启动时就把可用 ffmpeg 注入 PATH（根治），并在文档里给出 ffprobe 自检三要素
-- 预防：**验收要看产物属性（编码 / 分辨率 / 帧数 / 音轨），不能只看退出码**；静默降级是最难发现的一类问题
-
----
-
-### 问题：VAE 编码极慢（单 batch 约 8 分钟）
-
-**TL;DR**：VAE 被 `offload_device=cpu` 丢到 CPU 上算，12GB 卡叠加 1024×1024 分块后灾难性降速。（源自 `seedvr2-local-deploy`，2026-11-19 并入）
-
-- 现象：日志 `Encoding batch N/29` 每次间隔 5~8 分钟，UI 进度条停在 0%。
-- 根因：`SeedVR2LoadVAEModel` 的 offload device 设成了 CPU。
-- 解决：VAE 的 `offload_device` 改 `cuda:0`，让编码上 GPU。
-- 预防：慢时看任务管理器——GPU 占用低且 CPU 占用高 = offload 设错了。
-
-### 问题：大 batch_size 反而更慢 / 爆显存
-
-**TL;DR**：SeedVR2 的消耗主力是 **VAE 解码分块**，不是模型大小或分辨率；小 batch 才高效。（源自 `seedvr2-local-deploy`）
-
-- 现象：845 帧、batch 33 时全程预计达数小时量级。
-- 根因：参考 `ai-upscaler-benchmark`（2026-06）实测：1080p 下 batch=9 已约 0.11 fps，更大/更高分辨率直接 OOM。[benchmark](https://github.com/ismael-joffroy-chandoutis/ai-upscaler-benchmark/blob/main/docs/video-upscalers.md)
-- 解决：`batch_size` 降到 9（或 5）；保留 VAE tiling + `blocks_to_swap`。
-- 预防：长视频优先小 batch + tiling，别贪大 batch。
-
-### 问题：`resolution` 参数填 `"fixed"` 不生效
-
-**TL;DR**：该字段要整数；填字符串会走默认值、控件显示异常。（源自 `seedvr2-local-deploy`）
-
-- 现象：节点分辨率控件为字符串值，输出分辨率不符合预期。
-- 解决：显式填整数 `1080`（或快档 `1024`）。
-- 预防：改完工作流拖进画布重载，看节点实际显示的值确认。
-
-### 问题：每次跑都像第一次一样慢
-
-**TL;DR**：`cache_model=false` 时每次任务结束就卸载模型，下一次重新加载 + 冷启动。（源自 `seedvr2-local-deploy`）
-
-- 现象：换第二个视频又开始漫长的加载阶段。
-- 解决：Loader 节点 `cache_model` 开 `true`，模型常驻，后续任务直接复用。
-- 注意：会持续占用显存（3B FP8 约 3GB）；连续修多段时开，单次任务可不开。
-
-### 问题：git / curl 不走系统代理，GitHub 直连被重置
-
-**TL;DR**：本机代理是 `127.0.0.1:7890`，但 `git`/`curl` 默认不读系统代理，git 协议连 GitHub 偶尔直接失败。（源自 `seedvr2-local-deploy`）
-
-- 现象：`git clone` 卡住 / 被 reset；权重下载失败。
-- 解决：`git`/`curl` 显式 `-x http://127.0.0.1:7890`；克隆节点改用 zip 包而非 git 协议。
-- 预防：下载节点 / 权重前先确认代理链路能通。
-
-### 性能基准参考（4070S 12GB）
-
-- **外部基准**：`ai-upscaler-benchmark`（2026-06，测于 RTX 5090）——SeedVR2 1080p batch 9 ≈ **0.11 fps**；VAE 解码分块主导消耗，效率路径 = 小 batch + VAE tiling + blockswap。[benchmark](https://github.com/ismael-joffroy-chandoutis/ai-upscaler-benchmark/blob/main/docs/video-upscalers.md)
-- **4070S 现实预期**：845 帧、1080p 档全程约 **30~60 分钟**是合理水平（非故障）；想更快 → `resolution=1024` + `batch=9`。
-- **判断是否卡死**：看日志 `Encoding batch N/29` 的 N 是否递增、任务管理器 GPU 利用率是否高；递增且 GPU 忙 = 在跑。
+| 问题 | TL;DR | 全文 |
+|---|---|---|
+| [PowerShell 5.1 把中文脚本读成乱码](docs/问题记录/PowerShell-5.1-把中文脚本读成乱码.md) | `.ps1` 存成 UTF-8 **without** BOM，PowerShell 5.1 按 ANSI 解码，中文变乱码并直接解析失败。 |
+| [安装脚本与批量脚本的档位名对不上](docs/问题记录/安装脚本与批量脚本档位名对不上.md) | 安装用 `-Profile 3b-fp8`、批量用 `-Profile 12g`，按手册装完就跑不起来。 |
+| [SeedVR2 的 7B FP8 权重下不到](docs/问题记录/SeedVR2-7B-FP8-权重下不到.md) | `seedvr2_ema_7b_fp8_e4m3fn.safetensors` 不在节点注册表里；注册表内的 7B FP8 是 `_mixed_block35_fp16` 变体，且只在 `AInVFX` 仓库。 |
+| [上游 README 写了 CLI 参数，代码里却没有](docs/问题记录/上游README写了CLI参数代码里却没有.md) | `--allow_vram_overflow` 出现在 SeedVR2 仓库 README 的「Performance Optimization」一节，但 v2.5.24 的 `inference_cli.py` 没实现它，传了直接报错退出。 |
+| [给 NVENC 编码器传 crf 被静默忽略](docs/问题记录/NVENC编码器传crf被静默忽略.md) | VideoHelperSuite 的 `nvenc_*` 格式定义里没有 `crf`，用的是 `bitrate` + `megabit`。 |
+| [Video2X 的模型名与缩放倍数不是任意组合](docs/问题记录/Video2X模型名与缩放倍数不是任意组合.md) | 合法模型只有 3+3+14 个；且 `models-pro` 没有 4 倍、`models-nose` 只有 2 倍、`realesrgan-plus` 只有 4 倍。 |
+| [Video2X 列设备用了旧版参数名](docs/问题记录/Video2X列设备用了旧版参数名.md) | 6.4.0 用 `--list-devices` / `-l` 列设备、`--device` / `-d` 选设备；`--list-gpus` 是旧版写法。 |
+| [FlashVSR 缺少 posi_prompt.pth 导致节点导入失败](docs/问题记录/FlashVSR缺posi_prompt导致节点导入失败.md) | 这个文件不在 HuggingFace 权重里，而是随节点仓库提交，由 `nodes.py` 从节点目录自身加载。 |
+| [用 import_module 做节点冒烟测试永远失败](docs/问题记录/用import_module做节点冒烟测试永远失败.md) | `custom_nodes` 下的目录名带连字符且不是 Python 包，`importlib.import_module("custom_nodes.ComfyUI-FlashVSR_Ultra_Fast")` 必然失败，会误导成"安装失败"。 |
+| [靠文件名集合判断批量产物会误判](docs/问题记录/靠文件名集合判断批量产物会误判.md) | 同名文件被覆盖时，新旧文件名集合完全一样，脚本会误判成"没有生成输出"。 |
+| [体积口径混用 GiB 与 GB](docs/问题记录/体积口径混用GiB与GB.md) | 同一份手册里两套口径（1 GiB = 2³⁰ vs 1 GB = 10⁹）却都标成"HuggingFace 实际文件大小"，同一文件出现两个数。 |
+| [同一事实在三个文件里写了三个版本](docs/问题记录/同一事实在三个文件里写了三个版本.md) | `检查环境.ps1` 给 16G 卡的方案三建议是"3B FP8 无 BlockSwap"，而手册和批量脚本的 `-Profile 16g` 是"3B FP16 + BlockSwap 16"。 |
+| [SeedVR2 的 ffmpeg 编码后端崩在精简构建上](docs/问题记录/SeedVR2的ffmpeg编码后端崩在精简构建上.md) | `inference_cli.py` 里写死了裸命令 `ffmpeg`（`shutil.which` 校验 + `subprocess.Popen(['ffmpeg', ...])` 编码），**只认 PATH**。PATH 上第一个往往是精简构建（`--disable-everything`，无 rawvideo、无 libx265），一跑就 `Unknown input format: 'rawvideo'` 崩溃；若换 opencv 后端则写成 MPEG-4 Part 2。 |
+| [SeedVR2 输出没有音轨](docs/问题记录/SeedVR2输出没有音轨.md) | SeedVR2 的 CLI **完全不处理音频**，`add_argument` 全表里没有任何音频项，输出天然只有视频流。手册一度写成"CLI 会自动保留"，是错的。 |
+| [只看"跑完了"会漏掉静默降级](docs/问题记录/只看跑完了会漏掉静默降级.md) | SeedVR2 的 ffmpeg 后端不可用时会**静默退回 opencv**，输出是 MPEG-4 Part 2（`codec_name=mpeg4`），体积比 H.264 大得多，但脚本退出码是 0、日志也报"completed successfully"。 |
+| [VAE 编码极慢（单 batch 约 8 分钟）](docs/问题记录/VAE编码极慢-单batch约8分钟.md) | VAE 被 `offload_device=cpu` 丢到 CPU 上算，12GB 卡叠加 1024×1024 分块后灾难性降速。（源自 `seedvr2-local-deploy`，2026-11-19 并入） |
+| [大 batch_size 反而更慢 / 爆显存](docs/问题记录/大batch_size反而更慢或爆显存.md) | SeedVR2 的消耗主力是 **VAE 解码分块**，不是模型大小或分辨率；小 batch 才高效。（源自 `seedvr2-local-deploy`） |
+| [`resolution` 参数填 `"fixed"` 不生效](docs/问题记录/resolution填fixed不生效.md) | 该字段要整数；填字符串会走默认值、控件显示异常。（源自 `seedvr2-local-deploy`） |
+| [每次跑都像第一次一样慢](docs/问题记录/每次跑都像第一次一样慢.md) | `cache_model=false` 时每次任务结束就卸载模型，下一次重新加载 + 冷启动。（源自 `seedvr2-local-deploy`） |
+| [git / curl 不走系统代理，GitHub 直连被重置](docs/问题记录/git和curl不走系统代理.md) | 本机代理是 `127.0.0.1:7890`，但 `git`/`curl` 默认不读系统代理，git 协议连 GitHub 偶尔直接失败。（源自 `seedvr2-local-deploy`） |
 
 ---
 

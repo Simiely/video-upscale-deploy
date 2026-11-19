@@ -119,7 +119,9 @@ python -m PyInstaller --clean --noconfirm VEHelper.spec
 ## 详细规则（按需 @引用）
 
 - 完整部署手册与修订记录：@docs/使用指南.md
-- 架构说明与关键问题记录：@DEVELOPMENT.md
+- 架构说明（组件职责 / 批量通道 / 设计决策 / 性能基准）：@docs/架构.md
+- 问题索引（一坑一篇，20 条）：@docs/问题记录/index.md
+- 项目概览与索引：@DEVELOPMENT.md
 - 版本变更：@CHANGELOG.md
 
 ## 启动器（launcher/）

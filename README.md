@@ -31,21 +31,12 @@
 
 ### 三张卡怎么分配
 
-| 显卡 | 显存 | 推荐主力 | 具体档位 |
-|---|---|---|---|
-| RTX 4070 Super | 12 GB | 方案一 + 方案二 | 方案二 `-Mode tiny-long`；方案三 `-Profile 12g` |
-| RTX 4070 Ti Super | 16 GB | 方案二 + 方案三 | 方案二 `-Mode tiny`；方案三 `-Profile 16g` |
-| RTX 4090 | 24 GB | 方案三 | `-Profile 24g`；方案二可开 `-Mode full` 冲画质 |
+按显存选主力方案与档位（`12g` / `16g` / `24g` 对应各方案 `-Mode` / `-Profile`）见 [docs/使用指南.md](docs/使用指南.md) 的「二、三张卡怎么分配」。
 
 ### 方案四：Merserk Visual Enhancer（非 ComfyUI，可选）
 
-前三套是「超分 / 修复」链路，方案四走另一条路：直接调用 **DLSS 5 神经渲染 / DLSS SR / RTX VSR** 做实时增强，适合边看边调、快速对比效果。
-
-- 用 [`04-VisualEnhancer/`](04-VisualEnhancer/) 里的 **VEHelper** 下载、安装并启动官方 GUI（Windows 桌面程序，不依赖 ComfyUI）
-- 与前三套互不干扰：不装自定义节点、不占 ComfyUI 环境，只落一个独立目录（默认 `D:\Tool\VisualEnhancer`）
-- 模型受限说明与打包方式见 [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md)
-
----
+不装节点、不占 ComfyUI 环境，走 DLSS 5 / DLSS SR / RTX VSR 的实时增强路线，与前三套互不干扰。
+用法、模型限制与打包见 [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md)。
 
 ## 环境要求
 
@@ -100,88 +91,22 @@ python .\launcher\视频方案启动器.py       # 源码直接跑（Windows + P
 # 或下载 Releases 里的 ComfyUI启动器.exe 双击
 ```
 
-启动器会**自动认出自己所在的部署包**（`launcher/` 的上一级就是部署根），无需配置任何路径。
-一个窗口里就能启动/停止 ComfyUI、挑输入、调参数、实时看日志，也能把工作流直接推进画布。
-详见 [launcher/README.md](launcher/README.md)。
+启动器会**自动认出自己所在的部署包**（`launcher/` 的上一级就是部署根），无需配置路径；一个窗口里就能
+启动/停止 ComfyUI、挑输入、调参数、实时看日志。界面与打包见 [launcher/README.md](launcher/README.md)。
 
 **B. 只用 PowerShell 脚本**
 
 ```powershell
-# 启动服务（会自动开浏览器）
 powershell -ExecutionPolicy Bypass -File .\00-ComfyUI底座\启动ComfyUI.ps1
 ```
 
-然后把 [workflows/](workflows/) 里的 `.json` **直接拖进网页**，节点与连线自动还原，改完素材路径点 Run 即可。
-用法、参数速查与实测性能见 [workflows/README.md](workflows/README.md)。
+启动后把 [workflows/](workflows/) 里的 `.json` 直接拖进网页即可（节点与连线自动还原）。
 
-**路径约定**：只改 `common.ps1` 顶部两个变量，所有脚本自动跟着走，不用逐个改。
-
-```
-C:\AI\              <- 程序 + 模型（改 UPSCALE_ROOT 可换）
-  ComfyUI\          <- 方案二、三共用的底座
-  Video2X\          <- 方案一便携包
-
-E:\VideoUpscale\    <- 素材与成品（改 UPSCALE_IO 可换）
-  input\            <- 待放大的视频丢这里
-  output\           <- 成品出这里
-```
-
-> **ComfyUI 的输出根也跟着走**：所有拉起 ComfyUI 的入口都会带上 `--output-directory <UPSCALE_IO>\output`，
-> 所以无论用启动器、`启动ComfyUI.ps1`，还是批量脚本自动拉起服务，**工作流产物都落在这一个地方**，
-> 不会再跑到 `ComfyUI\output` 去。（改过 `UPSCALE_IO` 之后若服务已在运行，要重启它才生效——ComfyUI 只在启动时读这个参数。）
-
----
+**路径约定 / ComfyUI 输出落点 / 图形界面连线表**见 [docs/使用指南.md](docs/使用指南.md) 的「三、目录与路径约定」与「五、图形界面连线表」；改 `common.ps1` 顶部两个变量，所有脚本自动跟着走。
 
 ## 目录结构
 
-```
-video-upscale-deploy/
-├── README.md               # 本文件：门面 + 快速开始 + 文档索引
-├── AGENTS.md               # 给 AI / 未来的你：技术栈版本、关键坑、约定
-├── DEVELOPMENT.md          # 架构说明与关键问题记录（一坑一篇）
-├── CHANGELOG.md            # 版本变更
-├── .gitignore
-├── docs/
-│   └── 使用指南.md          # 命令行部署手册（含逐条修订记录；图形界面见 launcher/README.md）
-├── launcher/               # 图形启动器（v1.9.0 起并入，原 video-launcher 仓库）
-│   ├── README.md           #   启动器专项说明：界面、改设置、启动自检、打包
-│   ├── 视频方案启动器.py     #   入口：配置 + 业务逻辑 + 界面装配（版本号 APP_VER 在此）
-│   ├── 运行时.py            #   与界面无关的运行时支撑：自检 / 日志 / 工作流取用 / 体积格式化 / torch 探测
-│   ├── 部署下载.py          #   部署清单探测 + ModelScope 分段下载 + 镜像回退 + ffmpeg 安装（v1.5.0 切出）
-│   ├── 部署卡.py            #   「缺失与部署」卡界面 mixin（v1.5.0 切出）
-│   ├── 服务面板.py          #   服务启停 / 队列清理 / 批量任务 mixin
-│   ├── ui_kit.py           #   深色自绘控件库 + 设计令牌
-│   ├── 桥接资源.py          #   「加载到画布」桥接扩展的资源与构造
-│   ├── 部署清单.py          #   部署清单数据（16 项：判定文件 / 期望大小 / 安装脚本 / 下载源）
-│   ├── 提示词.py            #   MiniMax H3 提示词装配（I2VA 对齐句 + 三字段）
-│   ├── verify_deploy.py    #   部署清单逻辑自检（字段完整 / 元组结构 / 实际大小探测）
-│   └── VideoLauncher.spec  #   PyInstaller 打包配置（exe 不入库，走 Releases）
-├── 04-VisualEnhancer/      # 方案四：DLSS 5 视觉增强启动器（非 ComfyUI）
-│   ├── README.md           #   使用 / 下载链路 / 模型限制 / 打包
-│   ├── VEHelper.py         #   入口（实现拆在 vehelper/ 包）
-│   ├── vehelper/           #   界面 / 下载 / 版本查询 / 安装 / 配置
-│   ├── tests/              #   17 项 unittest（纯函数优先）
-│   └── VEHelper.spec       #   PyInstaller 打包配置（exe 不入库，走 Releases）
-├── workflows/              # 图形界面工作流（拖进 ComfyUI 网页即用）
-│   ├── README.md           #   索引（命名规则、每份的模型/效果/档位）、用法、参数速查
-│   ├── FlashVSR/           #   FlashVSR 倍率型放大：2× 有声 / 2× 无音轨 / 长视频自动分段
-│   ├── SeedVR2/            #   SeedVR2 目标分辨率型：1080p 五档 + 4K 极致 + 官方示例（共 6）
-│   └── MiniMax/            #   MiniMax H3 生成型：文生视频 T2V / 图生视频 I2V
-├── common.ps1              # 三套方案共用的配置与工具函数
-├── 检查环境.ps1             # 环境体检（只读）
-├── 00-ComfyUI底座/
-│   ├── 安装ComfyUI.ps1
-│   └── 启动ComfyUI.ps1
-├── 01-Video2X/
-│   ├── 安装Video2X.ps1
-│   └── 批量放大.ps1
-├── 02-FlashVSR/
-│   ├── 安装FlashVSR.ps1
-│   └── 批量放大.ps1
-└── 03-SeedVR2/
-    ├── 安装SeedVR2.ps1
-    └── 批量放大.ps1
-```
+逐文件注释的完整目录树见 [docs/目录结构.md](docs/目录结构.md)。
 
 ## 文档索引
 
@@ -191,6 +116,9 @@ video-upscale-deploy/
 | [04-VisualEnhancer/README.md](04-VisualEnhancer/README.md) | 使用者 | 方案四：VEHelper 用法、下载/续传链路、模型限制、打包与测试 |
 | [workflows/README.md](workflows/README.md) | 使用者 | 图形界面工作流：拖入即用、两个 FlashVSR 版本的区别、参数速查、实测性能 |
 | [docs/使用指南.md](docs/使用指南.md) | 命令行用户 | 执行顺序、每个步骤的作用、全部参数说明、显卡分配、图形界面连线表、常见问题、修订记录（图形启动器见 [launcher/README.md](launcher/README.md)） |
+| [docs/目录结构.md](docs/目录结构.md) | 使用者 / 开发者 | 逐文件注释的完整目录树 |
+| [docs/架构.md](docs/架构.md) | 开发者 | 组件职责、`common.ps1` 能力、两条批量通道、关键设计决策、性能基准 |
+| [docs/问题记录/](docs/问题记录/) | 开发者 | 20 条踩坑，一坑一篇（编码 / 档位名 / 权重 / 编码器 / 代理…） |
 | [docs/MiniMax-H3-使用指南.md](docs/MiniMax-H3-使用指南.md) | H3 使用者 | 三路线对比 / 决策树 / 下载清单 / 参数 / 排错（原 `minimax-h3-local-deploy`） |
 | [docs/MiniMax-H3-实测-路线B-4070TiSuper16G.md](docs/MiniMax-H3-实测-路线B-4070TiSuper16G.md) | H3 使用者 | 16G 单机实测：3 分 13 秒/条 + 显存/内存峰值 + 无头运行 |
 | [docs/MiniMax-H3-DEVELOPMENT.md](docs/MiniMax-H3-DEVELOPMENT.md) | H3 开发者 | 8 条 H3 专属坑（加载被杀、int8 慢 3 倍、NVFP4 选型、GGUF 等） |
@@ -198,7 +126,7 @@ video-upscale-deploy/
 | [workflows/SeedVR2-画布原件/](workflows/SeedVR2-画布原件/) | 图形界面用户 | 2 份 UI 格式画布原件（原 `seedvr2-local-deploy`），日常执行仍用 API 图 |
 | `docs/SeedVR2-AGENTS-历史快照.md` · `docs/MiniMax-H3-AGENTS-历史快照.md` | 追溯 | 两个已归档子仓的 AGENTS 原样快照（当时精确版本 / 约定 / 基线） |
 | [AGENTS.md](AGENTS.md) | AI / 未来的你 | 技术栈精确版本、关键坑、约定、常用命令 |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | 开发者 | 项目概览、架构说明、关键问题与方案 |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | 开发者 | 项目概览、架构索引、关键问题索引（一坑一篇） |
 | [CHANGELOG.md](CHANGELOG.md) | 所有人 | 版本变更记录 |
 
 ---

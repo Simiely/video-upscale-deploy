@@ -4,6 +4,19 @@
 
 ---
 
+## 仓库 · 2026-11-19 · 拆 README / DEVELOPMENT 为「门面 + 子页」
+
+- `README.md` 221 → **149 行**：逐文件目录树整段搬到 `docs/目录结构.md`（56 行，一字未删）；
+  「三张卡怎么分配」与「路径约定 / 输出落点 / 连线表」改为指向 `docs/使用指南.md` 的二、三、五节 ——
+  那三节本来就是同一份内容且更全（路径树还多出 `.venv/`、`custom_nodes/`、各权重体积），属**去重**；
+  「方案四」压成 2 行 + 链接（详情在 `04-VisualEnhancer/README.md`）
+- `DEVELOPMENT.md` 290 → **61 行**：架构正文连同性能基准搬到 `docs/架构.md`（81 行）；
+  20 条坑改成真正的**一坑一篇** `docs/问题记录/<坑>.md`（原文件开头就自称「一坑一篇」，此前其实堆在一个文件里），
+  本页只留标题 + TL;DR 的索引表
+- 新增 `docs/问题记录/index.md`（标题 + TL;DR，可按需手翻）
+- 搬到 `docs/问题记录/` 的页里，指向根目录的链接改写为 `../../AGENTS.md`；`docs/目录结构.md` 的树同步补上 docs/ 新成员
+- 验收：`REPO CHECK: PASS (ERROR=0, WARN=0)`；行数自断言 README ≤150、DEVELOPMENT ≤200、AGENTS ≤150
+
 ## 仓库 · 2026-11-19 · 升级 repo-kit 2.9.0
 
 - kit 2.8.0 → **2.9.0**；`schema/kit.lock.json` 重写（`spec_version` 2.1.3 → **2.1.4**）
