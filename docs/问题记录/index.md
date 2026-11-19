@@ -5,7 +5,7 @@
 
 | 问题 | TL;DR |
 |---|---|
-| [PowerShell 5.1 把中文脚本读成乱码](PowerShell-5.1-把中文脚本读成乱码.md) | `.ps1` 存成 UTF-8 **without** BOM，PowerShell 5.1 按 ANSI 解码，中文变乱码并直接解析失败。 |
+| [PowerShell 5.1 把中文脚本读成乱码](PowerShell-5.1-把中文脚本读成乱码.md) | `.ps1` 无 BOM 时 PS 5.1 按 ANSI 解码，每奇数个连续汉字多出半字节、吞掉紧随其后的字符：吞引号报语法错误，吞换行则静默合并两行。 |
 | [安装脚本与批量脚本的档位名对不上](安装脚本与批量脚本档位名对不上.md) | 安装用 `-Profile 3b-fp8`、批量用 `-Profile 12g`，按手册装完就跑不起来。 |
 | [SeedVR2 的 7B FP8 权重下不到](SeedVR2-7B-FP8-权重下不到.md) | `seedvr2_ema_7b_fp8_e4m3fn.safetensors` 不在节点注册表里；注册表内的 7B FP8 是 `_mixed_block35_fp16` 变体，且只在 `AInVFX` 仓库。 |
 | [上游 README 写了 CLI 参数，代码里却没有](上游README写了CLI参数代码里却没有.md) | `--allow_vram_overflow` 出现在 SeedVR2 仓库 README 的「Performance Optimization」一节，但 v2.5.24 的 `inference_cli.py` 没实现它，传了直接报错退出。 |
